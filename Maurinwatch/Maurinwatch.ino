@@ -18,10 +18,50 @@
  */
 
 #include "config.h"
+#include <stdio.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 
+
+
+
+#define VERSAO "0.2"
+//#define BOTAO_POWER 36
+
+
+
+#define INTERVALO_10_SEGUNDOS 10000000LL // 10 segundos em microssegundos
+
+
+
+bool lenergy = false;
+bool flgpower = false;
+bool flgbutton = false;
+
+//Maquina de estado do relogio
+typedef enum 
+{
+  EN_INICIO,  //Inicialização de setup
+  EN_WATCH01, //Mostrando o display
+  EN_REPOUSO, //Em repouso   
+  EN_FIM      //Fim de opcoes
+} Estado;
+
+typedef struct
+{
+  Estado estado_atual;
+} MaquinaEstado;
+
+
+//Variavies globais
 TTGOClass *ttgo;
+MaquinaEstado maquina;
 
 #define TFT_GREY 0x5AEB
+
+bool irq;
 
 float sx = 0, sy = 1, mx = 1, my = 0, hx = -1, hy = 0;    // Saved H, M, S x & y multipliers
 float sdeg = 0, mdeg = 0, hdeg = 0;
@@ -34,6 +74,35 @@ uint8_t hh = conv2d(__TIME__), mm = conv2d(__TIME__ + 3), ss = conv2d(__TIME__ +
 
 boolean initial = 1;
 
+int64_t tempo_inicio = esp_timer_get_time();
+int64_t tempo_atual;
+
+/*Declarações de funcoes*/
+void Start_Relogio();
+void normal_energy();
+void low_energy();
+void MudaEstado(MaquinaEstado *maquina1, Estado valor);
+void proximoEstado(MaquinaEstado *maquina1);
+void printxy(int x,int y, char *info);
+
+/*Imprime na tela*/
+void printxy(int x,int y, char *info)
+{
+    ttgo->tft->fillScreen(TFT_BLACK);
+    ttgo->tft->drawString(info,  x, y, 4);
+    ttgo->tft->setTextFont(4);
+    ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);
+}
+
+void normal_energy()
+{
+  ttgo->openBL();
+
+}
+void low_energy()
+{
+  ttgo->closeBL();         
+}
 
 static uint8_t conv2d(const char *p)
 {
@@ -44,18 +113,109 @@ static uint8_t conv2d(const char *p)
 }
 
 
-void setup(void)
+//Acende display
+void AcendeDisplay()
 {
-    Serial.begin(115200);
+  normal_energy();
+  //ttgo->openBL();
+}
 
+void ApagaDisplay()
+{
+  low_energy();
+  //ttgo->closeBL();
+}
+
+
+void Start_Serial()
+{
+  Serial.begin(115200);
+}
+
+void Start_definicoes()
+{
+  irq = false;
+  maquina.estado_atual = EN_INICIO; //Maquina de estado
+  Serial.println("Iniciou definicoes");
+  // Mudou_Estado()
+}
+
+void Start_tft()
+{
+    Serial.println("Iniciou TTF");
     ttgo = TTGOClass::getWatch();
     ttgo->begin();
     ttgo->openBL();
 
     ttgo->tft->fillScreen(TFT_BLACK);
-    ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically
+    ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically  
+   
+}
 
-    // Draw clock face
+void Start_Power()
+{
+    Serial.println("Start Power");
+    pinMode(AXP202_INT, INPUT_PULLUP);
+    attachInterrupt(AXP202_INT, [] {
+        irq = true;
+        Serial.print("Atribui valor irq");
+    }, FALLING);
+
+    //!Clear IRQ unprocessed  first
+    ttgo->power->enableIRQ(AXP202_PEK_SHORTPRESS_IRQ | AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_IRQ, true);
+    ttgo->power->clearIRQ();
+
+
+}
+
+void proximoEstado(MaquinaEstado *maquina1) 
+{
+  /*
+    Estado proximo;
+    proximo = (Estado)(maquina1->estado_atual + 1) % EN_FIM;
+    if((proximo && EN_FIM)==0)
+    {
+      //maquina->estado_atual = proximo; /*Muda o estado da maquina
+      MudaEstado(maquina1, proximo); 
+    }
+    */
+}
+
+void MudaEstado(MaquinaEstado *maquina1, Estado valor)
+{
+  Serial.print("Recebeu:");
+  Serial.println(valor);
+  maquina1->estado_atual = (Estado)valor;
+  /*Inicializa estado atual*/
+  if(maquina1->estado_atual == EN_WATCH01)
+  {
+    Serial.println("Mudou estado:EN_WATCH01");
+    
+    tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
+    //Start_Relogio();
+    AcendeDisplay();
+  } else
+  if(maquina1->estado_atual == EN_REPOUSO)
+  {
+    Serial.println("Mudou estado:EN_REPOUSO");
+    
+    //tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
+    ApagaDisplay();
+    
+  }  else
+  if(maquina1->estado_atual == EN_INICIO)
+  {
+    Serial.println("Mudou estado:EN_INICIO");
+    
+    tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
+    Start_Relogio();
+  }
+}
+
+
+void Start_Relogio()
+{
+  // Draw clock face
     ttgo->tft->fillCircle(120, 120, 118, TFT_WHITE);
     ttgo->tft->fillCircle(120, 120, 110, TFT_BLACK);
 
@@ -94,18 +254,78 @@ void setup(void)
     targetTime = millis() + 1000;
 }
 
-void loop()
+
+void Wellcome()
 {
-    if (targetTime < millis()) {
+  
+  Serial.println("Maurinsoft - Firmware ");
+  Serial.print("Versão:");
+  Serial.println(VERSAO); 
+  
+}
+
+void setup(void)
+{
+    Start_Serial();    
+    Start_definicoes(); //Iniciando definicoes de ambiente    
+    Wellcome();
+    
+    Start_tft();
+    Serial.println("Entra aqui");
+    Start_Power();
+    Serial.println("Sai aqui");
+    MudaEstado(&maquina, EN_WATCH01);   
+    Serial.println("Finalizou Setup");   
+}
+
+
+void LePower()
+{
+    //Serial.println(irq); 
+    if(irq) 
+    {
+        irq = false;
+        ttgo->power->readIRQ();
+        if (ttgo->power->isVbusPlugInIRQ()) {
+            //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
+            //ttgo->tft->drawString("Power Plug In", 25, 100);
+            Serial.println("Power Plug In");
+            flgpower = true;
+        }
+        if (ttgo->power->isVbusRemoveIRQ()) {
+            //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
+            //ttgo->tft->drawString("Power Remove", 25, 100);
+            Serial.println("Power Remove");
+            flgpower = false;
+        }
+        if (ttgo->power->isPEKShortPressIRQ()) 
+        {
+            //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
+            //ttgo->tft->drawString("PowerKey Press", 25, 100);
+            Serial.println("PowerKey Press");
+            flgbutton = true;
+        }
+        ttgo->power->clearIRQ();
+    }
+    
+}
+
+void Display_Relogio()
+{
+    if (targetTime < millis()) 
+    {
         targetTime += 1000;
         ss++;              // Advance second
-        if (ss == 60) {
+        if (ss == 60) 
+        {
             ss = 0;
             mm++;            // Advance minute
-            if (mm > 59) {
+            if (mm > 59) 
+            {
                 mm = 0;
                 hh++;          // Advance hour
-                if (hh > 23) {
+                if (hh > 23) 
+                {
                     hh = 0;
                 }
             }
@@ -122,7 +342,8 @@ void loop()
         sx = cos((sdeg - 90) * 0.0174532925);
         sy = sin((sdeg - 90) * 0.0174532925);
 
-        if (ss == 0 || initial) {
+        if (ss == 0 || initial) 
+        {
             initial = 0;
             // Erase hour and minute hand positions every minute
             ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
@@ -143,4 +364,76 @@ void loop()
         ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
         ttgo->tft->fillCircle(120, 121, 3, TFT_RED);
     }
+}
+
+
+
+void Leituras()
+{
+   LePower(); /*Le funcionalidades de interrupcao AXP202 */
+       
+ 
+}
+
+void MedeTempo()
+{
+  /*Somente muda se diferente de repouso*/
+  if (!(maquina.estado_atual && EN_REPOUSO))
+  {
+        tempo_atual = esp_timer_get_time();
+        int64_t tempo_decorrido = tempo_atual - tempo_inicio;
+
+        if (tempo_decorrido >= INTERVALO_10_SEGUNDOS) 
+        {
+            // 10 segundos se passaram
+            //printf("10 segundos se passaram.\n");
+            //tempo_inicio = tempo_atual; // Reiniciar a contagem
+            Serial.println("MedeTempo em Repouso");
+            
+            
+            MudaEstado(&maquina, EN_REPOUSO); //Muda o estado da maquina de estado
+        }
+
+        //vTaskDelay(pdMS_TO_TICKS(100)); // Adicionar um pequeno atraso para reduzir a carga da CPU
+  }
+}
+
+//Analisa sinais obtidos de leituras
+void Analisa()
+{
+  if(flgbutton) /*Controle de pressionar botao*/
+  {
+         /*Desliga ou liga a tela*/  
+         if(maquina.estado_atual == EN_WATCH01)
+         {
+                  MudaEstado(&maquina, EN_REPOUSO);
+                  flgbutton = false;
+         } else  if(maquina.estado_atual == EN_REPOUSO)
+         {
+                  MudaEstado(&maquina, EN_WATCH01);
+                  flgbutton = false;
+         }
+   }     
+}
+
+//Maquina de estado
+void EstadoAtual()
+{
+  //Serial.print("Estado Atual: ");
+  //Serial.println(maquina.estado_atual);
+  if(maquina.estado_atual == EN_WATCH01)
+  {      
+      //Serial.print('.');
+      Display_Relogio();
+      MedeTempo();
+  }
+
+}
+
+void loop()
+{  
+  Leituras();
+  Analisa();
+  //Maquinas de Estado
+  EstadoAtual();
 }
