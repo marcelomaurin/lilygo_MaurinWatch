@@ -23,6 +23,9 @@
 #include "freertos/task.h"
 #include "esp_system.h"
 #include "esp_timer.h"
+#include <BLEDevice.h>
+#include <BLEUtils.h>
+#include <BLEServer.h>
 
 
 
@@ -34,16 +37,30 @@
 
 #define INTERVALO_10_SEGUNDOS 10000000LL // 10 segundos em microssegundos
 
-
+TFT_eSPI *tft;
+PCF8563_Class *rtc;
 
 bool lenergy = false;
 bool flgpower = false;
 bool flgbutton = false;
 
+
+bool deviceConnected = false;
+bool oldDeviceConnected = false;
+uint32_t interval = 0;
+
+// See the following for generating UUIDs:
+// https://www.uuidgenerator.net/
+
+#define SERVICE_UUID        "4fafc201-1fb5-459e-8fcc-c5c9c331914b"
+#define CHARACTERISTIC_UUID "beb5483e-36e1-4688-b7f5-ea07361b26a8"
+#define TFT_GREY            0x5AEB
+
 //Maquina de estado do relogio
 typedef enum 
 {
   EN_INICIO,  //Inicialização de setup
+  EN_SETCLOCK, //Configura o relogio  
   EN_WATCH01, //Mostrando o display
   EN_REPOUSO, //Em repouso   
   EN_FIM      //Fim de opcoes
@@ -84,6 +101,122 @@ void low_energy();
 void MudaEstado(MaquinaEstado *maquina1, Estado valor);
 void proximoEstado(MaquinaEstado *maquina1);
 void printxy(int x,int y, char *info);
+void drawSTATUS(bool status);
+
+bool setDateTimeFormBLE(const char *str)
+{
+    uint16_t year;
+    uint8_t month,  day, hour,  min,  sec;
+    String temp, data;
+    int r1, r2;
+    if (str == NULL)return false;
+
+    data = str;
+
+    r1 = data.indexOf(',');
+    if (r1 < 0)return false;
+    temp = data.substring(0, r1);
+    year = (uint16_t)temp.toInt();
+
+    r1 += 1;
+    r2 = data.indexOf(',', r1);
+    if (r2 < 0)return false;
+    temp = data.substring(r1, r2);
+    month = (uint16_t)temp.toInt();
+
+    r1 = r2 + 1;
+    r2 = data.indexOf(',', r1);
+    if (r2 < 0)return false;
+    temp = data.substring(r1, r2);
+    day = (uint16_t)temp.toInt();
+
+    r1 = r2 + 1;
+    r2 = data.indexOf(',', r1);
+    if (r2 < 0)return false;
+    temp = data.substring(r1, r2);
+    hour = (uint16_t)temp.toInt();
+
+    r1 = r2 + 1;
+    r2 = data.indexOf(',', r1);
+    if (r2 < 0)return false;
+    temp = data.substring(r1, r2);
+    min = (uint16_t)temp.toInt();
+
+    r1 = r2 + 1;
+    temp = data.substring(r1);
+    sec = (uint16_t)temp.toInt();
+
+    // No parameter check, please set the correct time
+    Serial.printf("SET:%u/%u/%u %u:%u:%u\n", year, month, day, hour, min, sec);
+    rtc->setDateTime(year, month, day, hour, min, sec);
+
+    return true;
+}
+
+class MyCallbacks: public BLECharacteristicCallbacks
+{
+    void onWrite(BLECharacteristic *pCharacteristic)
+    {
+        std::string value = pCharacteristic->getValue();
+
+        if (value.length() > 0) {
+            Serial.println("*********");
+            Serial.print("New value: ");
+            value.c_str();
+            for (int i = 0; i < value.length(); i++)
+                Serial.print(value[i]);
+            Serial.println();
+            Serial.println("*********");
+        }
+
+        if (value.length() <= 0) {
+            return;
+        }
+        if (!setDateTimeFormBLE(value.c_str())) {
+            Serial.println("DateTime format error ...");
+        }
+    }
+};
+
+class MyServerCallback : public BLEServerCallbacks
+{
+    void onConnect(BLEServer *pServer)
+    {
+        deviceConnected = true;
+        Serial.println("onConnect");
+    }
+
+    void onDisconnect(BLEServer *pServer)
+    {
+        deviceConnected = false;
+        Serial.println("onDisconnect");
+    }
+};
+
+void setupBLE(void)
+{
+
+    BLEDevice::init("LilyGo-Watch");
+    BLEServer *pServer = BLEDevice::createServer();
+
+    pServer->setCallbacks(new MyServerCallback);
+
+    BLEService *pService = pServer->createService(SERVICE_UUID);
+
+    BLECharacteristic *pCharacteristic = pService->createCharacteristic(
+            CHARACTERISTIC_UUID,
+            BLECharacteristic::PROPERTY_READ |
+            BLECharacteristic::PROPERTY_WRITE);
+
+    pCharacteristic->setCallbacks(new MyCallbacks());
+
+    pCharacteristic->setValue("Format: YY,MM,DD,h,m,s");
+    pService->start();
+
+    BLEAdvertising *pAdvertising = pServer->getAdvertising();
+    pAdvertising->start();
+}
+
 
 /*Imprime na tela*/
 void printxy(int x,int y, char *info)
@@ -209,6 +342,10 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
     
     tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
     Start_Relogio();
+  } else 
+  if(maquina1->estado_atual == EN_SETCLOCK)
+  {
+    drawSTATUS(false);
   }
 }
 
@@ -264,6 +401,19 @@ void Wellcome()
   
 }
 
+void Start_Clock()
+{
+    //  Receive as a local variable for easy writing
+    rtc = ttgo->rtc;
+    tft = ttgo->tft;
+    // Time check will be done, if the time is incorrect, it will be set to compile time
+    rtc->check();
+
+    // Some settings of BLE
+    setupBLE();
+
+}
+
 void setup(void)
 {
     Start_Serial();    
@@ -273,6 +423,7 @@ void setup(void)
     Start_tft();
     Serial.println("Entra aqui");
     Start_Power();
+    Start_Clock();
     Serial.println("Sai aqui");
     MudaEstado(&maquina, EN_WATCH01);   
     Serial.println("Finalizou Setup");   
@@ -308,6 +459,23 @@ void LePower()
         ttgo->power->clearIRQ();
     }
     
+}
+
+void drawSTATUS(bool status)
+{
+    String str = status ? "Connection" : "Disconnect";
+    int16_t cW = tft->textWidth("Connection", 2);
+    int16_t dW = tft->textWidth("Disconnect", 2);
+    int16_t w = cW > dW ? cW : dW;
+    w += 6;
+    int16_t x = 160;
+    int16_t y = 20;
+    int16_t h = tft->fontHeight(2) + 4;
+    uint16_t col = status ? TFT_GREEN : TFT_GREY;
+    tft->fillRoundRect(x, y, w, h, 3, col);
+    tft->setTextColor(TFT_BLACK, col);
+    tft->setTextFont(2);
+    tft->drawString(str, x + 2, y);
 }
 
 void Display_Relogio()
@@ -378,7 +546,7 @@ void Leituras()
 void MedeTempo()
 {
   /*Somente muda se diferente de repouso*/
-  if (!(maquina.estado_atual && EN_REPOUSO))
+  if(maquina.estado_atual == EN_WATCH01)
   {
         tempo_atual = esp_timer_get_time();
         int64_t tempo_decorrido = tempo_atual - tempo_inicio;
@@ -426,6 +594,34 @@ void EstadoAtual()
       //Serial.print('.');
       Display_Relogio();
       MedeTempo();
+  }
+  if(maquina.estado_atual == EN_SETCLOCK)
+  {
+      // disconnected
+    if (!deviceConnected && oldDeviceConnected) {
+        oldDeviceConnected = deviceConnected;
+        Serial.println("Draw deviceDisconnected");
+        drawSTATUS(false);
+    }
+
+    // connecting
+    if (deviceConnected && !oldDeviceConnected) {
+        // do stuff here on connecting
+        oldDeviceConnected = deviceConnected;
+        Serial.println("Draw deviceConnected");
+        drawSTATUS(true);
+    }
+
+    if (millis() - interval > 1000) {
+
+        interval = millis();
+
+        tft->setTextColor(TFT_YELLOW, TFT_BLACK);
+
+        tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_DD_MM_YYYY), 50, 200, 4);
+
+        tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_HMS), 5, 118, 7);
+    }
   }
 
 }
