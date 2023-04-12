@@ -71,10 +71,21 @@ typedef struct
   Estado estado_atual;
 } MaquinaEstado;
 
+/*Estrutura de estado do touch*/
+typedef struct
+{
+   int xIn;
+   int yIn;
+   int xOut;
+   int yOut; 
+   bool flgtouch;
+} TouchEstado;
 
 //Variavies globais
 TTGOClass *ttgo;
 MaquinaEstado maquina;
+
+TouchEstado touch;
 
 #define TFT_GREY 0x5AEB
 
@@ -102,6 +113,7 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor);
 void proximoEstado(MaquinaEstado *maquina1);
 void printxy(int x,int y, char *info);
 void drawSTATUS(bool status);
+void AnalisaTouch();
 
 bool setDateTimeFormBLE(const char *str)
 {
@@ -270,7 +282,13 @@ void Start_definicoes()
   irq = false;
   maquina.estado_atual = EN_INICIO; //Maquina de estado
   Serial.println("Iniciou definicoes");
-  // Mudou_Estado()
+
+  //Touch Screen
+  touch.xIn = 0;
+  touch.xOut = 0;
+  touch.yIn = 0; 
+  touch.yOut = 0; 
+  touch.flgtouch = false;
 }
 
 void Start_tft()
@@ -414,6 +432,12 @@ void Start_Clock()
 
 }
 
+void Start_Touch()
+{
+    // Use touch panel interrupt as digital input
+    pinMode(TOUCH_INT, INPUT);
+}
+
 void setup(void)
 {
     Start_Serial();    
@@ -534,11 +558,39 @@ void Display_Relogio()
     }
 }
 
-
+void Le_Touch()
+{
+  // Print touch coordinates to the screen
+  if (tft->getTouch(x, y)) 
+  {
+      if(touch.flgtouch == TRUE)
+      {
+        //snprintf(buf, 64, "X:%03d Y:%03d", x, y);
+        //tft->drawCentreString(buf, 120, 120, 2);
+        touch.xOut = x;
+        touch.yOut = y;
+      }
+      else
+      {
+        touch.xIn = x;
+        touch.yIn = y;        
+        touch.flgtouch = TRUE; /*Seta valor*/
+      }
+   } else {
+      if (touch.flgtouch)
+      {
+        //Chama evento de retirar Analisar touch
+        touch.flgtouch = FALSE;
+        AnalisaTouch();
+        
+      }
+   }
+}
 
 void Leituras()
 {
    LePower(); /*Le funcionalidades de interrupcao AXP202 */
+   Le_Touch();
        
  
 }
@@ -564,6 +616,11 @@ void MedeTempo()
 
         //vTaskDelay(pdMS_TO_TICKS(100)); // Adicionar um pequeno atraso para reduzir a carga da CPU
   }
+}
+
+void AnalisaTouch()
+{
+  //Nao implementado
 }
 
 //Analisa sinais obtidos de leituras
