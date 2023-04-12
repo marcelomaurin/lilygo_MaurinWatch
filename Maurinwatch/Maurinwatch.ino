@@ -37,6 +37,7 @@
 
 #define INTERVALO_10_SEGUNDOS 10000000LL // 10 segundos em microssegundos
 
+TTGOClass *watch = nullptr;
 TFT_eSPI *tft;
 PCF8563_Class *rtc;
 
@@ -74,10 +75,10 @@ typedef struct
 /*Estrutura de estado do touch*/
 typedef struct
 {
-   int xIn;
-   int yIn;
-   int xOut;
-   int yOut; 
+   int16_t xIn;
+   int16_t yIn;
+   int16_t xOut;
+   int16_t yOut; 
    bool flgtouch;
 } TouchEstado;
 
@@ -233,20 +234,26 @@ void setupBLE(void)
 /*Imprime na tela*/
 void printxy(int x,int y, char *info)
 {
-    ttgo->tft->fillScreen(TFT_BLACK);
-    ttgo->tft->drawString(info,  x, y, 4);
-    ttgo->tft->setTextFont(4);
-    ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);
+    //ttgo->tft->fillScreen(TFT_BLACK);
+    watch->tft->fillScreen(TFT_BLACK);
+    //ttgo->tft->drawString(info,  x, y, 4);
+    watch->tft->drawString(info,  x, y, 4);
+    //ttgo->tft->setTextFont(4);
+    watch->tft->setTextFont(4);
+    //ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);
+    watch->tft->setTextColor(TFT_WHITE, TFT_BLACK);
 }
 
 void normal_energy()
 {
-  ttgo->openBL();
+  //ttgo->openBL();
+  watch->openBL();
 
 }
 void low_energy()
 {
-  ttgo->closeBL();         
+  //ttgo->closeBL();         
+  watch->closeBL();         
 }
 
 static uint8_t conv2d(const char *p)
@@ -294,12 +301,18 @@ void Start_definicoes()
 void Start_tft()
 {
     Serial.println("Iniciou TTF");
-    ttgo = TTGOClass::getWatch();
-    ttgo->begin();
-    ttgo->openBL();
+    watch = TTGOClass::getWatch();
+    watch->begin();
+    watch->openBL();
+    //ttgo = TTGOClass::getWatch();
+    //ttgo->begin();
+    //ttgo->openBL();
+    tft = watch->tft;
 
-    ttgo->tft->fillScreen(TFT_BLACK);
-    ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically  
+    //ttgo->tft->fillScreen(TFT_BLACK);
+    watch->tft->fillScreen(TFT_BLACK);
+    //ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically  
+    watch->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically  
    
 }
 
@@ -313,8 +326,10 @@ void Start_Power()
     }, FALLING);
 
     //!Clear IRQ unprocessed  first
-    ttgo->power->enableIRQ(AXP202_PEK_SHORTPRESS_IRQ | AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_IRQ, true);
-    ttgo->power->clearIRQ();
+    //ttgo->power->enableIRQ(AXP202_PEK_SHORTPRESS_IRQ | AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_IRQ, true);
+    watch->power->enableIRQ(AXP202_PEK_SHORTPRESS_IRQ | AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_IRQ, true);
+    //ttgo->power->clearIRQ();
+    watch->power->clearIRQ();
 
 
 }
@@ -371,8 +386,10 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
 void Start_Relogio()
 {
   // Draw clock face
-    ttgo->tft->fillCircle(120, 120, 118, TFT_WHITE);
-    ttgo->tft->fillCircle(120, 120, 110, TFT_BLACK);
+    //ttgo->tft->fillCircle(120, 120, 118, TFT_WHITE);
+    watch->tft->fillCircle(120, 120, 118, TFT_WHITE);
+    //ttgo->tft->fillCircle(120, 120, 110, TFT_BLACK);
+    watch->tft->fillCircle(120, 120, 110, TFT_BLACK);
 
     // Draw 12 lines
     for (int i = 0; i < 360; i += 30) {
@@ -383,7 +400,8 @@ void Start_Relogio()
         x1 = sx * 100 + 120;
         yy1 = sy * 100 + 120;
 
-        ttgo->tft->drawLine(x0, yy0, x1, yy1, TFT_RED);
+        //ttgo->tft->drawLine(x0, yy0, x1, yy1, TFT_RED);
+        watch->tft->drawPixel(x0, yy0, TFT_WHITE);
     }
 
     // Draw 60 dots
@@ -393,14 +411,17 @@ void Start_Relogio()
         x0 = sx * 102 + 120;
         yy0 = sy * 102 + 120;
         // Draw minute markers
-        ttgo->tft->drawPixel(x0, yy0, TFT_WHITE);
-
+        //ttgo->tft->drawPixel(x0, yy0, TFT_WHITE);
+        watch->tft->drawPixel(x0, yy0, TFT_WHITE);
         // Draw main quadrant dots
-        if (i == 0 || i == 180) ttgo->tft->fillCircle(x0, yy0, 2, TFT_WHITE);
-        if (i == 90 || i == 270) ttgo->tft->fillCircle(x0, yy0, 2, TFT_WHITE);
+        if (i == 0 || i == 180) //ttgo->tft->fillCircle(x0, yy0, 2, TFT_WHITE);
+          watch->tft->fillCircle(x0, yy0, 2, TFT_WHITE);
+        if (i == 90 || i == 270) //ttgo->tft->fillCircle(x0, yy0, 2, TFT_WHITE);
+          watch->tft->fillCircle(x0, yy0, 2, TFT_WHITE);
     }
 
-    ttgo->tft->fillCircle(120, 121, 3, TFT_WHITE);
+    //ttgo->tft->fillCircle(120, 121, 3, TFT_WHITE);
+    watch->tft->fillCircle(120, 121, 3, TFT_WHITE);
 
     // Draw text at position 120,260 using fonts 4
     // Only font numbers 2,4,6,7 are valid. Font 6 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 : . - a p m
@@ -422,8 +443,10 @@ void Wellcome()
 void Start_Clock()
 {
     //  Receive as a local variable for easy writing
-    rtc = ttgo->rtc;
-    tft = ttgo->tft;
+    //rtc = ttgo->rtc;
+    rtc = watch->rtc;
+    //tft = ttgo->tft;
+    tft = watch->tft;
     // Time check will be done, if the time is incorrect, it will be set to compile time
     rtc->check();
 
@@ -460,27 +483,32 @@ void LePower()
     if(irq) 
     {
         irq = false;
-        ttgo->power->readIRQ();
-        if (ttgo->power->isVbusPlugInIRQ()) {
+        //ttgo->power->readIRQ();
+        watch->power->readIRQ();
+        //if (ttgo->power->isVbusPlugInIRQ()) {
+        if (watch->power->isVbusPlugInIRQ()) {
             //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
             //ttgo->tft->drawString("Power Plug In", 25, 100);
             Serial.println("Power Plug In");
             flgpower = true;
         }
-        if (ttgo->power->isVbusRemoveIRQ()) {
+        //if (ttgo->power->isVbusRemoveIRQ()) {
+        if (watch->power->isVbusRemoveIRQ()) {          
             //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
             //ttgo->tft->drawString("Power Remove", 25, 100);
             Serial.println("Power Remove");
             flgpower = false;
         }
-        if (ttgo->power->isPEKShortPressIRQ()) 
+        //if (ttgo->power->isPEKShortPressIRQ()) 
+        if (watch->power->isPEKShortPressIRQ())         
         {
             //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
             //ttgo->tft->drawString("PowerKey Press", 25, 100);
             Serial.println("PowerKey Press");
             flgbutton = true;
         }
-        ttgo->power->clearIRQ();
+        //ttgo->power->clearIRQ();
+        watch->power->clearIRQ();
     }
     
 }
@@ -538,30 +566,42 @@ void Display_Relogio()
         {
             initial = 0;
             // Erase hour and minute hand positions every minute
-            ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
+            //ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
+            watch->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
             ohx = hx * 62 + 121;
             ohy = hy * 62 + 121;
-            ttgo->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
+            //ttgo->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
+            watch->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
             omx = mx * 84 + 120;
             omy = my * 84 + 121;
         }
 
         // Redraw new hand positions, hour and minute hands not erased here to avoid flicker
-        ttgo->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
+        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
+        watch->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
         osx = sx * 90 + 121;
         osy = sy * 90 + 121;
-        ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
-        ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
-        ttgo->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
-        ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
-        ttgo->tft->fillCircle(120, 121, 3, TFT_RED);
+        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        watch->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        //ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
+        watch->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
+        //ttgo->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
+        watch->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
+        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        watch->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        //ttgo->tft->fillCircle(120, 121, 3, TFT_RED);
+        watch->tft->fillCircle(120, 121, 3, TFT_RED);
     }
 }
 
 void Le_Touch()
 {
+  int16_t x,y;
+  
+
+
   // Print touch coordinates to the screen
-  if (tft->getTouch(x, y)) 
+  if (watch->getTouch(x, y)) 
   {
       if(touch.flgtouch == TRUE)
       {
@@ -585,6 +625,10 @@ void Le_Touch()
         
       }
    }
+   Serial.print("X:");
+   Serial.println(x);
+   Serial.print("Y:");
+   Serial.println(y);
 }
 
 void Leituras()
