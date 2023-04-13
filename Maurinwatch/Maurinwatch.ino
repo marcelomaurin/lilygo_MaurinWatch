@@ -27,16 +27,23 @@
 #include <BLEUtils.h>
 #include <BLEServer.h>
 #include <WiFi.h>
+#include <driver/i2s.h>
+#include "esp_sleep.h"
 
 
 
+#define BUFFER_SIZE (2*1024)
 
+// TWATCH 2020 V3 PDM microphone pin
+#define MIC_DATA            2
+#define MIC_CLOCK           0
 
-#define VERSAO "0.2"
+#define VERSAO "0.3"
 //#define BOTAO_POWER 36
 #define LIMITCLICK 60
 
-
+// Tempo de suspensão em microssegundos (1 segundo = 1000000 microssegundos)
+uint64_t tempoDeSuspensao = 1000000;
 #define INTERVALO_10_SEGUNDOS 10000000LL // 10 segundos em microssegundos
 
 TTGOClass *watch = nullptr;
@@ -63,9 +70,11 @@ uint32_t interval = 0;
 typedef enum 
 {
   EN_INICIO,  //Inicialização de setup
+  EN_SPLASH,  //Splash de inicializaçao
   EN_WIFI,    //Informações sobre wifi
   EN_SETCLOCK, //Configura o relogio  
   EN_WATCH01, //Mostrando o display
+  EN_MIC,     //Envia dados do microfone para o chatgpt
   EN_REPOUSO, //Em repouso   
   EN_FIM      //Fim de opcoes
 } Estado;
@@ -144,6 +153,7 @@ void normal_energy();
 void low_energy();
 void MudaEstado(MaquinaEstado *maquina1, Estado valor);
 void proximoEstado(MaquinaEstado *maquina1);
+void cls();
 void printxy(int x,int y, char *info);
 void drawSTATUS(bool status);
 void AnalisaTouch();
@@ -153,6 +163,42 @@ void ConnectWifi();
 bool WifiConnected();
 void ConnectWifi();
 
+void scanAndDisplayNetworks() 
+{
+  watch->tft->drawString("Escaneando redes...", 10, 10);
+  Serial.println("Escaneando redes...");
+
+  int n = WiFi.scanNetworks(); // Realizar o escaneamento e obter o número de redes encontradas
+
+  if (n == 0) {
+    //watch->tft->fillScreen(TFT_BLACK);
+    cls();
+    watch->tft->drawString("Nenhuma rede encontrada", 10, 10);
+    Serial.println("Nenhuma rede encontrada");
+  } else {
+    //watch->tft->fillScreen(TFT_BLACK);
+    cls();
+    watch->tft->drawString((String(n) + " redes encontradas").c_str(), 10, 10);
+    Serial.print(n);
+    Serial.println(" redes encontradas");
+
+    int y_offset = 30;
+    for (int i = 0; i < n; ++i) {
+      // Imprimir as informações da rede (SSID, RSSI e criptografia) na tela e no monitor serial
+      String networkInfo = String(i + 1) + ": " + WiFi.SSID(i) + " (" + WiFi.RSSI(i) + "dBm)";
+      watch->tft->drawString(networkInfo.c_str(), 10, y_offset);
+      Serial.println(networkInfo);
+      
+      y_offset += 20;
+      if (y_offset >= watch->tft->height() - 20) {
+        // Parar de exibir redes na tela se não houver mais espaço
+        break;
+      }
+    }
+  }
+}
+
+
 
 //Verifica se wifi esta conectado
 bool WifiConnected()
@@ -160,7 +206,7 @@ bool WifiConnected()
   if (WiFi.status() == WL_CONNECTED)
   {
      setupcfg.setupwifi.connected = TRUE;
-     Serial.println("Wifi connected!");     
+     //Serial.println("Wifi connected!");     
      return TRUE;
   }  else
   {
@@ -291,12 +337,17 @@ void setupBLE(void)
     pAdvertising->start();
 }
 
+void cls()
+{
+  watch->tft->fillScreen(TFT_BLACK);
+}
 
 /*Imprime na tela*/
 void printxy(int x,int y, char *info)
 {
     //ttgo->tft->fillScreen(TFT_BLACK);
-    watch->tft->fillScreen(TFT_BLACK);
+    //watch->tft->fillScreen(TFT_BLACK);
+    cls();
     //ttgo->tft->drawString(info,  x, y, 4);
     watch->tft->drawString(info,  x, y, 4);
     //ttgo->tft->setTextFont(4);
@@ -309,12 +360,18 @@ void normal_energy()
 {
   //ttgo->openBL();
   watch->openBL();
+  // Colocar o ESP32 em modo de suspensão
+  //esp_sleep_enable_timer_wakeup();
 
 }
 void low_energy()
 {
   //ttgo->closeBL();         
-  watch->closeBL();         
+  watch->closeBL(); 
+  // Habilitar o pino GPIO para acordar o ESP32 quando for HIGH
+  //esp_sleep_enable_ext0_wakeup((gpio_num_t)wakeUpPin, HIGH);
+  // Colocar o ESP32 em modo de suspensão
+  //esp_deep_sleep_start();        
 }
 
 
@@ -381,9 +438,11 @@ void Start_tft()
     tft = watch->tft;
 
     //ttgo->tft->fillScreen(TFT_BLACK);
-    watch->tft->fillScreen(TFT_BLACK);
+    //watch->tft->fillScreen(TFT_BLACK);
+    cls();
     //ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically  
     watch->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically  
+    
    
 }
 
@@ -395,6 +454,9 @@ void Start_Power()
         irq = true;
         Serial.print("Atribui valor irq");
     }, FALLING);
+
+    // Habilitar o pino GPIO para acordar o ESP32 quando for HIGH
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)AXP202_INT, HIGH);
 
     //!Clear IRQ unprocessed  first
     //ttgo->power->enableIRQ(AXP202_PEK_SHORTPRESS_IRQ | AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_IRQ, true);
@@ -432,7 +494,8 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   if(maquina1->estado_atual == EN_WATCH01)
   {
     Serial.println("Mudou estado:EN_WATCH01");
-    watch->tft->fillScreen(TFT_BLACK); 
+    //watch->tft->fillScreen(TFT_BLACK); 
+    cls();
     tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
     //Start_Relogio();
     AcendeDisplay();
@@ -455,12 +518,14 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   } else 
   if(maquina1->estado_atual == EN_SETCLOCK)
   {
-    watch->tft->fillScreen(TFT_BLACK);
+    //watch->tft->fillScreen(TFT_BLACK);
+    cls();
     drawSTATUS(false);
   }
   if(maquina1->estado_atual == EN_WIFI)
   {
-        watch->tft->fillScreen(TFT_BLACK);
+        //watch->tft->fillScreen(TFT_BLACK);
+        cls();
         watch->tft->drawString("Conectado!", 10, 10);
         Serial.println("Conectado!");
          // Imprimir o endereço IP local
@@ -468,6 +533,10 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
         watch->tft->drawString(WiFi.localIP().toString().c_str(), 10, 50);
         Serial.print("Endereço IP: ");
         Serial.println(WiFi.localIP());
+  }
+  if(maquina1->estado_atual == EN_SPLASH)
+  {
+    Wellcome();
   }
 }
 
@@ -478,7 +547,8 @@ void Start_Relogio()
     //ttgo->tft->fillCircle(120, 120, 118, TFT_WHITE);
     watch->tft->fillCircle(120, 120, 118, TFT_WHITE);
     //ttgo->tft->fillCircle(120, 120, 110, TFT_BLACK);
-    watch->tft->fillCircle(120, 120, 110, TFT_BLACK);
+    //watch->tft->fillCircle(120, 120, 110, TFT_BLACK);
+    cls();
 
     // Draw 12 lines
     for (int i = 0; i < 360; i += 30) {
@@ -521,11 +591,17 @@ void Start_Relogio()
 
 
 void Wellcome()
-{
-  
+{ //textWidth
+  watch->tft->setTextFont(4);
+  watch->tft->drawString("Maurinsoft", 60, 80);
+  watch->tft->setTextFont(4);
+  watch->tft->drawString("Versao:", 60, 150);
+  watch->tft->drawString(VERSAO, 180, 150);
   Serial.println("Maurinsoft - Firmware ");
   Serial.print("Versão:");
   Serial.println(VERSAO); 
+  //esp_sleep_enable_timer_wakeup(tempoDeSuspensao);
+  sleep(4);
   
 }
 
@@ -548,6 +624,9 @@ void Start_Touch()
 {
     // Use touch panel interrupt as digital input
     pinMode(TOUCH_INT, INPUT);
+    // Habilitar o pino GPIO para acordar o ESP32 quando for HIGH
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)TOUCH_INT, HIGH);
+    //esp_sleep_enable_touchpad_wakeup();
 }
 
 
@@ -560,7 +639,8 @@ void setup(void)
 {
     Start_Serial();    
     Start_definicoes(); //Iniciando definicoes de ambiente    
-    Wellcome();
+    //Wellcome();
+    
     
     Start_tft();
     Serial.println("Entra aqui");
@@ -568,8 +648,11 @@ void setup(void)
     Start_Clock();
     Start_Wifi();
     Serial.println("Sai aqui");
-    MudaEstado(&maquina, EN_WATCH01);   
+    
     Serial.println("Finalizou Setup");   
+    MudaEstado(&maquina, EN_SPLASH); 
+    MudaEstado(&maquina, EN_WATCH01);   
+
 }
 
 
@@ -612,18 +695,19 @@ void LePower()
 void drawSTATUS(bool status)
 {
     String str = status ? "Connection" : "Disconnect";
-    int16_t cW = tft->textWidth("Connection", 2);
-    int16_t dW = tft->textWidth("Disconnect", 2);
+    int16_t cW =  watch->tft->textWidth("Connection", 2);
+    int16_t dW =  watch->tft->textWidth("Disconnect", 2);
     int16_t w = cW > dW ? cW : dW;
     w += 6;
     int16_t x = 160;
     int16_t y = 20;
-    int16_t h = tft->fontHeight(2) + 4;
+    int16_t h =  watch->tft->fontHeight(2) + 4;
     uint16_t col = status ? TFT_GREEN : TFT_GREY;
-    tft->fillRoundRect(x, y, w, h, 3, col);
-    tft->setTextColor(TFT_BLACK, col);
-    tft->setTextFont(2);
-    tft->drawString(str, x + 2, y);
+    watch->tft->fillRoundRect(x, y, w, h, 3, col);
+    watch->tft->setTextColor(TFT_BLACK, col);
+
+    watch->tft->setTextFont(2);
+    watch->tft->drawString(str, x + 2, y);
 }
 
 void Display_Relogio()
@@ -930,6 +1014,8 @@ void EstadoAtual()
   } else
   {
     //Em repouso
+    //sleep(100);
+    //esp_sleep_enable_timer_wakeup(tempoDeSuspensao);
   }
   
 
