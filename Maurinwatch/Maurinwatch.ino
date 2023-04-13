@@ -26,6 +26,8 @@
 #include <BLEDevice.h>
 #include <BLEUtils.h>
 #include <BLEServer.h>
+#include <WiFi.h>
+
 
 
 
@@ -61,6 +63,7 @@ uint32_t interval = 0;
 typedef enum 
 {
   EN_INICIO,  //Inicialização de setup
+  EN_WIFI,    //Informações sobre wifi
   EN_SETCLOCK, //Configura o relogio  
   EN_WATCH01, //Mostrando o display
   EN_REPOUSO, //Em repouso   
@@ -81,6 +84,7 @@ typedef enum
 typedef struct
 {
   Estado estado_atual;
+
 } MaquinaEstado;
 
 /*Estrutura de estado do touch*/
@@ -94,11 +98,27 @@ typedef struct
    MOVETOUCH move;
 } TouchEstado;
 
+
+//Estrutura de Setup do Wifi
+typedef struct
+{
+  char ssid[30];
+  char pass[30];
+  bool connected;
+} SetupWifi;
+
+//Estrutura de Setup
+typedef struct 
+{
+  SetupWifi setupwifi;
+} SetupCFG;
+
 //Variavies globais
 TTGOClass *ttgo;
 MaquinaEstado maquina;
 
 TouchEstado touch;
+SetupCFG setupcfg; //Setup geral do Relogio
 
 #define TFT_GREY 0x5AEB
 
@@ -128,6 +148,34 @@ void printxy(int x,int y, char *info);
 void drawSTATUS(bool status);
 void AnalisaTouch();
 void MarcaTempoInicio();
+void ConnectWifi();
+//Verifica se wifi esta conectado
+bool WifiConnected();
+void ConnectWifi();
+
+
+//Verifica se wifi esta conectado
+bool WifiConnected()
+{
+  if (WiFi.status() == WL_CONNECTED)
+  {
+     setupcfg.setupwifi.connected = TRUE;
+     Serial.println("Wifi connected!");     
+     return TRUE;
+  }  else
+  {
+    setupcfg.setupwifi.connected = FALSE;
+    return FALSE;
+  }  
+}
+
+void ConnectWifi()
+{
+  // Conectar-se à rede Wi-Fi
+  WiFi.begin(setupcfg.setupwifi.ssid, setupcfg.setupwifi.pass);
+
+}
+
 
 bool setDateTimeFormBLE(const char *str)
 {
@@ -269,6 +317,8 @@ void low_energy()
   watch->closeBL();         
 }
 
+
+
 static uint8_t conv2d(const char *p)
 {
     uint8_t v = 0;
@@ -310,6 +360,13 @@ void Start_definicoes()
   touch.yOut = 0; 
   touch.flgtouch = false;
   touch.move = TC_NONE;
+   
+  //Start Setup 
+  memset(setupcfg.setupwifi.ssid,'\0',sizeof(setupcfg.setupwifi.ssid));
+  sprintf(setupcfg.setupwifi.ssid,"Colaboradores");
+  memset(setupcfg.setupwifi.pass,'\0',sizeof(setupcfg.setupwifi.pass));
+  sprintf(setupcfg.setupwifi.pass,"10203040"); 
+
 }
 
 void Start_tft()
@@ -401,6 +458,17 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
     watch->tft->fillScreen(TFT_BLACK);
     drawSTATUS(false);
   }
+  if(maquina1->estado_atual == EN_WIFI)
+  {
+        watch->tft->fillScreen(TFT_BLACK);
+        watch->tft->drawString("Conectado!", 10, 10);
+        Serial.println("Conectado!");
+         // Imprimir o endereço IP local
+        watch->tft->drawString("IP address:", 10, 30);
+        watch->tft->drawString(WiFi.localIP().toString().c_str(), 10, 50);
+        Serial.print("Endereço IP: ");
+        Serial.println(WiFi.localIP());
+  }
 }
 
 
@@ -482,6 +550,12 @@ void Start_Touch()
     pinMode(TOUCH_INT, INPUT);
 }
 
+
+void Start_Wifi()
+{
+ ConnectWifi(); 
+}
+
 void setup(void)
 {
     Start_Serial();    
@@ -492,6 +566,7 @@ void setup(void)
     Serial.println("Entra aqui");
     Start_Power();
     Start_Clock();
+    Start_Wifi();
     Serial.println("Sai aqui");
     MudaEstado(&maquina, EN_WATCH01);   
     Serial.println("Finalizou Setup");   
@@ -663,6 +738,7 @@ void Leituras()
 {
    LePower(); /*Le funcionalidades de interrupcao AXP202 */
    Le_Touch();
+   WifiConnected();
        
  
 }
@@ -770,7 +846,12 @@ void Analisa()
        if(maquina.estado_atual == EN_WATCH01)
        {
          MudaEstado(&maquina,EN_SETCLOCK);
+       } else
+       if(maquina.estado_atual == EN_SETCLOCK)
+       {
+         MudaEstado(&maquina,EN_WIFI);
        }
+
      } else 
      if(touch.move == TC_MOVEDOWN)
      {
@@ -778,7 +859,12 @@ void Analisa()
        if(maquina.estado_atual == EN_SETCLOCK)
        {
          MudaEstado(&maquina,EN_WATCH01);
-       }
+       } else
+       if(maquina.estado_atual == EN_WIFI)
+       {
+         MudaEstado(&maquina,EN_SETCLOCK);
+       } 
+       
      } else 
      if(touch.move == TC_MOVELEFT)
      {
@@ -835,7 +921,12 @@ void EstadoAtual()
             Serial.println("Draw deviceConnected");
             drawSTATUS(true);
           }
-      }      
+      } else
+      if(maquina.estado_atual == EN_WIFI)
+      {
+
+      }
+
   } else
   {
     //Em repouso
