@@ -32,7 +32,7 @@
 
 #define VERSAO "0.2"
 //#define BOTAO_POWER 36
-
+#define LIMITCLICK 60
 
 
 #define INTERVALO_10_SEGUNDOS 10000000LL // 10 segundos em microssegundos
@@ -67,6 +67,17 @@ typedef enum
   EN_FIM      //Fim de opcoes
 } Estado;
 
+//Maquina de estado do relogio
+typedef enum 
+{
+  TC_NONE,
+  TC_MOVELEFT,  //Arrasta para a esquerda
+  TC_MOVERIGHT, //Arrasta para Direita  
+  TC_MOVEUP, //Arrasta para Cima
+  TC_MOVEDOWN, //Arrasta para Baixo  
+  TC_CLICK      //CLick
+} MOVETOUCH;
+
 typedef struct
 {
   Estado estado_atual;
@@ -80,6 +91,7 @@ typedef struct
    int16_t xOut;
    int16_t yOut; 
    bool flgtouch;
+   MOVETOUCH move;
 } TouchEstado;
 
 //Variavies globais
@@ -296,6 +308,7 @@ void Start_definicoes()
   touch.yIn = 0; 
   touch.yOut = 0; 
   touch.flgtouch = false;
+  touch.move = TC_NONE;
 }
 
 void Start_tft()
@@ -356,7 +369,7 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   if(maquina1->estado_atual == EN_WATCH01)
   {
     Serial.println("Mudou estado:EN_WATCH01");
-    
+    watch->tft->fillScreen(TFT_BLACK); 
     tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
     //Start_Relogio();
     AcendeDisplay();
@@ -378,6 +391,7 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   } else 
   if(maquina1->estado_atual == EN_SETCLOCK)
   {
+    watch->tft->fillScreen(TFT_BLACK);
     drawSTATUS(false);
   }
 }
@@ -597,8 +611,6 @@ void Display_Relogio()
 void Le_Touch()
 {
   int16_t x,y;
-  
-
 
   // Print touch coordinates to the screen
   if (watch->getTouch(x, y)) 
@@ -613,22 +625,30 @@ void Le_Touch()
       else
       {
         touch.xIn = x;
-        touch.yIn = y;        
+        touch.yIn = y;  
+        touch.move = TC_NONE;      
         touch.flgtouch = TRUE; /*Seta valor*/
+        //Serial.print("XIN:");
+        //Serial.println(touch.xIn);
+        //Serial.print("YIN:");
+        //Serial.println(touch.yIn);        
       }
-   } else {
+   } else 
+   {
       if (touch.flgtouch)
       {
         //Chama evento de retirar Analisar touch
         touch.flgtouch = FALSE;
+        
+        //Serial.print("X_Out:");
+        //Serial.println(touch.xOut);
+        //Serial.print("Y_Out:");
+        //Serial.println(touch.yOut);
         AnalisaTouch();
         
       }
    }
-   Serial.print("X:");
-   Serial.println(x);
-   Serial.print("Y:");
-   Serial.println(y);
+
 }
 
 void Leituras()
@@ -664,12 +684,52 @@ void MedeTempo()
 
 void AnalisaTouch()
 {
+  int64_t descx;
+  int64_t descy;
   //Nao implementado
+  descx = touch.xOut - touch.xIn;
+  descy = touch.yOut - touch.yIn;
+
+  if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy<LIMITCLICK&&descy>-LIMITCLICK)
+  {
+    touch.move = TC_CLICK;
+    //Serial.println("CLICK");
+  } else
+  {
+    if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy<-LIMITCLICK)
+    {
+      touch.move = TC_MOVEUP;
+      //Serial.println("MOVE UP");
+    } else {
+      if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy>LIMITCLICK)
+      {
+        touch.move = TC_MOVEDOWN;
+        //Serial.println("MOVE DOWN");
+      } else
+      {
+        if(descy<LIMITCLICK&&descy>-LIMITCLICK&&descx<-LIMITCLICK)
+        {
+          touch.move = TC_MOVELEFT;
+          //Serial.println("MOVE LEFT");
+        } else
+        {
+          if(descy<LIMITCLICK&&descy>-LIMITCLICK&&descx>LIMITCLICK)
+          {
+            touch.move = TC_MOVERIGHT;
+            //Serial.println("MOVE RIGHT");
+          }
+        }
+      }
+    }  
+  }
+  
 }
 
 //Analisa sinais obtidos de leituras
 void Analisa()
 {
+  // EN_SETCLOCK, //Configura o relogio  
+  //EN_WATCH01, //Mostrando o display
   if(flgbutton) /*Controle de pressionar botao*/
   {
          /*Desliga ou liga a tela*/  
@@ -682,7 +742,41 @@ void Analisa()
                   MudaEstado(&maquina, EN_WATCH01);
                   flgbutton = false;
          }
-   }     
+   } 
+   //Analisa Touch
+   if(touch.move != TC_NONE)
+   {
+     if(touch.move == TC_CLICK)
+     {
+       Serial.println("Click");
+     } else
+     if(touch.move == TC_MOVEUP)
+     {
+       Serial.println("MOVE UP");
+       if(maquina.estado_atual == EN_WATCH01)
+       {
+         MudaEstado(&maquina,EN_SETCLOCK);
+       }
+     } else 
+     if(touch.move == TC_MOVEDOWN)
+     {
+       Serial.println("MOVE DOWN");
+       if(maquina.estado_atual == EN_SETCLOCK)
+       {
+         MudaEstado(&maquina,EN_WATCH01);
+       }
+     } else 
+     if(touch.move == TC_MOVELEFT)
+     {
+       Serial.println("MOVE LEFT");
+     } else 
+     if(touch.move == TC_MOVERIGHT)
+     {
+       Serial.println("MOVE RIGHT");
+     }  
+
+     touch.move = TC_NONE;
+   }
 }
 
 //Maquina de estado
@@ -695,25 +789,28 @@ void EstadoAtual()
       //Serial.print('.');
       Display_Relogio();
       MedeTempo();
-  }
+  } else
   if(maquina.estado_atual == EN_SETCLOCK)
   {
       // disconnected
-    if (!deviceConnected && oldDeviceConnected) {
+    if (!deviceConnected && oldDeviceConnected) 
+    {
         oldDeviceConnected = deviceConnected;
         Serial.println("Draw deviceDisconnected");
         drawSTATUS(false);
     }
 
     // connecting
-    if (deviceConnected && !oldDeviceConnected) {
+    if (deviceConnected && !oldDeviceConnected) 
+    {
         // do stuff here on connecting
         oldDeviceConnected = deviceConnected;
         Serial.println("Draw deviceConnected");
         drawSTATUS(true);
     }
 
-    if (millis() - interval > 1000) {
+    if (millis() - interval > 1000) 
+    {
 
         interval = millis();
 
