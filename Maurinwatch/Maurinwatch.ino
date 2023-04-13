@@ -662,7 +662,7 @@ void Leituras()
 void MedeTempo()
 {
   /*Somente muda se diferente de repouso*/
-  if(maquina.estado_atual == EN_WATCH01)
+  if(maquina.estado_atual != EN_REPOUSO)
   {
         tempo_atual = esp_timer_get_time();
         int64_t tempo_decorrido = tempo_atual - tempo_inicio;
