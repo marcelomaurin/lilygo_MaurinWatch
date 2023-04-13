@@ -363,9 +363,9 @@ void Start_definicoes()
    
   //Start Setup 
   memset(setupcfg.setupwifi.ssid,'\0',sizeof(setupcfg.setupwifi.ssid));
-  sprintf(setupcfg.setupwifi.ssid,"Colaboradores");
+  sprintf(setupcfg.setupwifi.ssid,"  ");
   memset(setupcfg.setupwifi.pass,'\0',sizeof(setupcfg.setupwifi.pass));
-  sprintf(setupcfg.setupwifi.pass,"10203040"); 
+  sprintf(setupcfg.setupwifi.pass,"  "); 
 
 }
 
