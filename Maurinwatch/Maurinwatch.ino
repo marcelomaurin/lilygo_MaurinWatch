@@ -127,6 +127,7 @@ void proximoEstado(MaquinaEstado *maquina1);
 void printxy(int x,int y, char *info);
 void drawSTATUS(bool status);
 void AnalisaTouch();
+void MarcaTempoInicio();
 
 bool setDateTimeFormBLE(const char *str)
 {
@@ -360,6 +361,11 @@ void proximoEstado(MaquinaEstado *maquina1)
     */
 }
 
+void MarcaTempoInicio()
+{
+  tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
+}
+
 void MudaEstado(MaquinaEstado *maquina1, Estado valor)
 {
   Serial.print("Recebeu:");
@@ -386,7 +392,8 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   {
     Serial.println("Mudou estado:EN_INICIO");
     
-    tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
+    //tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
+    MarcaTempoInicio();
     Start_Relogio();
   } else 
   if(maquina1->estado_atual == EN_SETCLOCK)
@@ -628,6 +635,7 @@ void Le_Touch()
         touch.yIn = y;  
         touch.move = TC_NONE;      
         touch.flgtouch = TRUE; /*Seta valor*/
+        MarcaTempoInicio();
         //Serial.print("XIN:");
         //Serial.println(touch.xIn);
         //Serial.print("YIN:");
@@ -788,38 +796,11 @@ void Analisa()
 //Maquina de estado
 void EstadoAtual()
 {
-  //Serial.print("Estado Atual: ");
-  //Serial.println(maquina.estado_atual);
-  if(maquina.estado_atual == EN_WATCH01)
-  {      
-      //Serial.print('.');
-      Display_Relogio();
-      MedeTempo();
-  } else
-  if(maquina.estado_atual == EN_SETCLOCK)
+  if(maquina.estado_atual != EN_REPOUSO)
   {
-      // disconnected
-    if (!deviceConnected && oldDeviceConnected) 
-    {
-        oldDeviceConnected = deviceConnected;
-        Serial.println("Draw deviceDisconnected");
-        drawSTATUS(false);
-    }
 
-    // connecting
-    if (deviceConnected && !oldDeviceConnected) 
-    {
-        // do stuff here on connecting
-        oldDeviceConnected = deviceConnected;
-        Serial.println("Draw deviceConnected");
-        drawSTATUS(true);
-    }
-
-    if(maquina.estado_atual != EN_REPOUSO)
-    {
-
-        if (millis() - interval > 1000) 
-        {
+      if (millis() - interval > 1000) 
+      {
             interval = millis();
 
             tft->setTextColor(TFT_YELLOW, TFT_BLACK);
@@ -827,9 +808,39 @@ void EstadoAtual()
             tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_DD_MM_YYYY), 50, 200, 4);
 
             tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_HMS), 5, 118, 7);
-        }
-    }
+      }
+      //Serial.print("Estado Atual: ");
+      //Serial.println(maquina.estado_atual);
+      if(maquina.estado_atual == EN_WATCH01)
+      {      
+          //Serial.print('.');
+          Display_Relogio();
+          MedeTempo();
+      } else
+      if(maquina.estado_atual == EN_SETCLOCK)
+      {
+          // disconnected
+          if (!deviceConnected && oldDeviceConnected) 
+          {
+            oldDeviceConnected = deviceConnected;
+            Serial.println("Draw deviceDisconnected");
+            drawSTATUS(false);
+          }
+
+          // connecting
+          if (deviceConnected && !oldDeviceConnected) 
+          {
+            // do stuff here on connecting
+            oldDeviceConnected = deviceConnected;
+            Serial.println("Draw deviceConnected");
+            drawSTATUS(true);
+          }
+      }      
+  } else
+  {
+    //Em repouso
   }
+  
 
 }
 
