@@ -737,7 +737,13 @@ void Analisa()
          {
                   MudaEstado(&maquina, EN_REPOUSO);
                   flgbutton = false;
-         } else  if(maquina.estado_atual == EN_REPOUSO)
+         } else 
+         if(maquina.estado_atual == EN_SETCLOCK)
+         {
+                  MudaEstado(&maquina, EN_REPOUSO);
+                  flgbutton = false;
+         } else 
+         if(maquina.estado_atual == EN_REPOUSO)
          {
                   MudaEstado(&maquina, EN_WATCH01);
                   flgbutton = false;
@@ -809,16 +815,19 @@ void EstadoAtual()
         drawSTATUS(true);
     }
 
-    if (millis() - interval > 1000) 
+    if(maquina.estado_atual != EN_REPOUSO)
     {
 
-        interval = millis();
+        if (millis() - interval > 1000) 
+        {
+            interval = millis();
 
-        tft->setTextColor(TFT_YELLOW, TFT_BLACK);
+            tft->setTextColor(TFT_YELLOW, TFT_BLACK);
 
-        tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_DD_MM_YYYY), 50, 200, 4);
+            tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_DD_MM_YYYY), 50, 200, 4);
 
-        tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_HMS), 5, 118, 7);
+            tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_HMS), 5, 118, 7);
+        }
     }
   }
 
