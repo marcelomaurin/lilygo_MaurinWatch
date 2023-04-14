@@ -7,6 +7,8 @@
 
 // #define LILYGO_LILYPI_V1                     //LILYPI / TBLOCK requires an external display module
 // #define LILYGO_WATCH_BLOCK                   //LILYPI / TBLOCK requires an external display module
+// => Function select
+#define LILYGO_WATCH_LVGL                   //To use LVGL, you need to enable the macro LVGL
 
 
 

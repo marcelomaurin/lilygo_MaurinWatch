@@ -33,6 +33,7 @@
 
 
 #define BUFFER_SIZE (2*1024)
+uint8_t buffer[BUFFER_SIZE] = {0};
 
 // TWATCH 2020 V3 PDM microphone pin
 #define MIC_DATA            2
@@ -47,8 +48,14 @@ uint64_t tempoDeSuspensao = 1000000;
 #define INTERVALO_10_SEGUNDOS 10000000LL // 10 segundos em microssegundos
 
 TTGOClass *watch = nullptr;
-TFT_eSPI *tft;
+//TFT_eSPI *tft;
 PCF8563_Class *rtc;
+
+lv_obj_t            *chart = nullptr;
+lv_chart_series_t   *ser1 = nullptr;
+const int           define_max = 200;
+const int           define_avg = 15;
+const int           define_zero = 3000;
 
 bool lenergy = false;
 bool flgpower = false;
@@ -105,7 +112,27 @@ typedef struct
    int16_t yOut; 
    bool flgtouch;
    MOVETOUCH move;
+   bool press;
 } TouchEstado;
+
+typedef struct
+{
+  float               val_avg = 0;
+  float               val_avg_1 = 0;
+  float               all_val_avg = 0;
+
+  uint8_t             val1, val2;
+  int16_t             val16 = 0;
+  int16_t             val_max = 0;
+  int16_t             val_max_1 = 0;
+  int32_t             all_val_zero1 = 0;
+  int32_t             all_val_zero2 = 0;
+  int32_t             all_val_zero3 = 0;
+  uint32_t            j = 0;
+} MicVals;
+
+
+MicVals micval; /*Armazena valores de microfone*/
 
 
 //Estrutura de Setup do Wifi
@@ -123,7 +150,7 @@ typedef struct
 } SetupCFG;
 
 //Variavies globais
-TTGOClass *ttgo;
+//TTGOClass *ttgo;
 MaquinaEstado maquina;
 
 TouchEstado touch;
@@ -162,6 +189,7 @@ void ConnectWifi();
 //Verifica se wifi esta conectado
 bool WifiConnected();
 void ConnectWifi();
+void Le_MIC();
 
 void scanAndDisplayNetworks() 
 {
@@ -417,6 +445,7 @@ void Start_definicoes()
   touch.yOut = 0; 
   touch.flgtouch = false;
   touch.move = TC_NONE;
+  touch.press = FALSE;
    
   //Start Setup 
   memset(setupcfg.setupwifi.ssid,'\0',sizeof(setupcfg.setupwifi.ssid));
@@ -424,6 +453,44 @@ void Start_definicoes()
   memset(setupcfg.setupwifi.pass,'\0',sizeof(setupcfg.setupwifi.pass));
   sprintf(setupcfg.setupwifi.pass,"1425361425"); 
 
+}
+
+void Start_mic()
+{
+  
+
+    lv_obj_t *text = lv_label_create(lv_scr_act(), NULL);
+    lv_label_set_text(text, "PDM Microphone Test");
+    lv_obj_align(text, NULL, LV_ALIGN_IN_TOP_MID, 0, 20);
+
+    chart = lv_chart_create(lv_scr_act(), NULL);
+    lv_obj_set_size(chart, 200, 150);
+    lv_obj_align(chart, NULL, LV_ALIGN_CENTER, 0, 0);
+    lv_chart_set_type(chart,  LV_CHART_TYPE_LINE);   /*Show lines and points too*/
+    lv_chart_set_range(chart, 0, 800);
+
+    ser1 = lv_chart_add_series(chart, LV_COLOR_RED);
+
+    i2s_config_t i2s_config = {
+        .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_PDM),
+        .sample_rate =  44100,
+        .bits_per_sample = I2S_BITS_PER_SAMPLE_16BIT,
+        .channel_format = I2S_CHANNEL_FMT_RIGHT_LEFT,
+        .communication_format = (i2s_comm_format_t)(I2S_COMM_FORMAT_I2S | I2S_COMM_FORMAT_I2S_MSB),
+        .intr_alloc_flags = ESP_INTR_FLAG_LEVEL1,
+        .dma_buf_count = 2,
+        .dma_buf_len = 128,
+    };
+
+    i2s_pin_config_t i2s_cfg;
+    i2s_cfg.bck_io_num   = I2S_PIN_NO_CHANGE;
+    i2s_cfg.ws_io_num    = MIC_CLOCK;
+    i2s_cfg.data_out_num = I2S_PIN_NO_CHANGE;
+    i2s_cfg.data_in_num  = MIC_DATA;
+
+    i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
+    i2s_set_pin(I2S_NUM_0, &i2s_cfg);
+    i2s_set_clk(I2S_NUM_0, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_MONO);
 }
 
 void Start_tft()
@@ -435,7 +502,7 @@ void Start_tft()
     //ttgo = TTGOClass::getWatch();
     //ttgo->begin();
     //ttgo->openBL();
-    tft = watch->tft;
+    //tft = watch->tft;
 
     //ttgo->tft->fillScreen(TFT_BLACK);
     //watch->tft->fillScreen(TFT_BLACK);
@@ -521,7 +588,7 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
     //watch->tft->fillScreen(TFT_BLACK);
     cls();
     drawSTATUS(false);
-  }
+  } else
   if(maquina1->estado_atual == EN_WIFI)
   {
         //watch->tft->fillScreen(TFT_BLACK);
@@ -533,10 +600,14 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
         watch->tft->drawString(WiFi.localIP().toString().c_str(), 10, 50);
         Serial.print("Endereço IP: ");
         Serial.println(WiFi.localIP());
-  }
+  } else
   if(maquina1->estado_atual == EN_SPLASH)
   {
     Wellcome();
+  } else
+  if(maquina1->estado_atual == EN_MIC)
+  {
+    Start_mic();
   }
 }
 
@@ -611,7 +682,7 @@ void Start_Clock()
     //rtc = ttgo->rtc;
     rtc = watch->rtc;
     //tft = ttgo->tft;
-    tft = watch->tft;
+    //tft = watch->tft;
     // Time check will be done, if the time is incorrect, it will be set to compile time
     rtc->check();
 
@@ -647,6 +718,7 @@ void setup(void)
     Start_Power();
     Start_Clock();
     Start_Wifi();
+    
     Serial.println("Sai aqui");
     
     Serial.println("Finalizou Setup");   
@@ -781,6 +853,7 @@ void Le_Touch()
   // Print touch coordinates to the screen
   if (watch->getTouch(x, y)) 
   {
+      touch.press = TRUE;
       if(touch.flgtouch == TRUE)
       {
         //snprintf(buf, 64, "X:%03d Y:%03d", x, y);
@@ -802,6 +875,7 @@ void Le_Touch()
       }
    } else 
    {
+      touch.press = FALSE;
       if (touch.flgtouch)
       {
         //Chama evento de retirar Analisar touch
@@ -818,10 +892,65 @@ void Le_Touch()
 
 }
 
+void Le_MIC()
+{
+    size_t read_len = 0;
+    micval.j = micval.j + 1;
+    i2s_read(I2S_NUM_0, (char *) buffer, BUFFER_SIZE, &read_len, portMAX_DELAY);
+    for (int i = 0; i < BUFFER_SIZE / 2 ; i++) {
+        micval.val1 = buffer[i * 2];
+        micval.val2 = buffer[i * 2 + 1] ;
+        micval.val16 = micval.val1 + micval.val2 *  256;
+        if (micval.val16 > 0) {
+            micval.val_avg = micval.val_avg + micval.val16;
+            micval.val_max = max( micval.val_max, micval.val16);
+        }
+        if (micval.val16 < 0) {
+            micval.val_avg_1 = micval.val_avg_1 + micval.val16;
+            micval.val_max_1 = min( micval.val_max_1, micval.val16);
+        }
+        micval.all_val_avg = micval.all_val_avg + micval.val16;
+        if (abs(micval.val16) >= 20)
+            micval.all_val_zero1 = micval.all_val_zero1 + 1;
+        if (abs(micval.val16) >= 15)
+            micval.all_val_zero2 = micval.all_val_zero2 + 1;
+        if (abs(micval.val16) > 5)
+            micval.all_val_zero3 = micval.all_val_zero3 + 1;
+    }
+
+    if (micval.j % 2 == 0 && micval.j > 0) {
+        micval.val_avg = micval.val_avg / BUFFER_SIZE ;
+        micval.val_avg_1 = micval.val_avg_1 / BUFFER_SIZE;
+        micval.all_val_avg = micval.all_val_avg / BUFFER_SIZE ;
+
+        lv_chart_set_next(chart, ser1, micval.val_avg);
+
+        micval.val_avg = 0;
+        micval.val_max = 0;
+
+        micval.val_avg_1 = 0;
+        micval.val_max_1 = 0;
+
+        micval.all_val_avg = 0;
+        micval.all_val_zero1 = 0;
+        micval.all_val_zero2 = 0;
+        micval.all_val_zero3 = 0;
+    }
+    lv_task_handler();
+    delay(5);
+}
+
 void Leituras()
 {
    LePower(); /*Le funcionalidades de interrupcao AXP202 */
    Le_Touch();
+   if (maquina.estado_atual == EN_MIC)
+   {
+      if(touch.press)
+      {
+        Le_MIC();
+      }
+   }
    WifiConnected();
        
  
@@ -906,6 +1035,16 @@ void Analisa()
                   MudaEstado(&maquina, EN_REPOUSO);
                   flgbutton = false;
          } else 
+        if(maquina.estado_atual == EN_SETCLOCK)
+         {
+                  MudaEstado(&maquina, EN_REPOUSO);
+                  flgbutton = false;
+         } else          
+        if(maquina.estado_atual == EN_WIFI)
+         {
+                  MudaEstado(&maquina, EN_REPOUSO);
+                  flgbutton = false;
+         } else                   
          if(maquina.estado_atual == EN_SETCLOCK)
          {
                   MudaEstado(&maquina, EN_REPOUSO);
@@ -952,11 +1091,19 @@ void Analisa()
      } else 
      if(touch.move == TC_MOVELEFT)
      {
-       Serial.println("MOVE LEFT");
+       //Serial.println("MOVE LEFT");
+       if(maquina.estado_atual==EN_WATCH01) 
+       {
+         MudaEstado(&maquina,EN_MIC);
+       }
      } else 
      if(touch.move == TC_MOVERIGHT)
      {
-       Serial.println("MOVE RIGHT");
+       //Serial.println("MOVE RIGHT");
+       if (maquina.estado_atual==EN_MIC)
+       {
+         MudaEstado(&maquina,EN_WATCH01);
+       }
      }  
 
      touch.move = TC_NONE;
@@ -973,11 +1120,11 @@ void EstadoAtual()
       {
             interval = millis();
 
-            tft->setTextColor(TFT_YELLOW, TFT_BLACK);
+            watch->tft->setTextColor(TFT_YELLOW, TFT_BLACK);
 
-            tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_DD_MM_YYYY), 50, 200, 4);
+            watch->tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_DD_MM_YYYY), 50, 200, 4);
 
-            tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_HMS), 5, 118, 7);
+            watch->tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_HMS), 5, 118, 7);
       }
       //Serial.print("Estado Atual: ");
       //Serial.println(maquina.estado_atual);
@@ -985,7 +1132,7 @@ void EstadoAtual()
       {      
           //Serial.print('.');
           Display_Relogio();
-          MedeTempo();
+          MedeTempo(); //Avalia se entra em modo de espera
       } else
       if(maquina.estado_atual == EN_SETCLOCK)
       {
@@ -1008,7 +1155,12 @@ void EstadoAtual()
       } else
       if(maquina.estado_atual == EN_WIFI)
       {
+        MedeTempo(); //Avalia se entra em modo de espera
 
+      } else
+      if(maquina.estado_atual ==EN_MIC)
+      {
+        MedeTempo(); //Avalia se entra em modo de espera
       }
 
   } else
