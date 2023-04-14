@@ -39,7 +39,7 @@ uint8_t buffer[BUFFER_SIZE] = {0};
 #define MIC_DATA            2
 #define MIC_CLOCK           0
 
-#define VERSAO "0.3"
+#define VERSAO "0.4"
 //#define BOTAO_POWER 36
 #define LIMITCLICK 60
 
