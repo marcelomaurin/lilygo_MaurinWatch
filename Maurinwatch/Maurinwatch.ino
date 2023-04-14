@@ -150,7 +150,7 @@ typedef struct
 } SetupCFG;
 
 //Variavies globais
-//TTGOClass *ttgo;
+
 MaquinaEstado maquina;
 
 TouchEstado touch;
@@ -199,12 +199,12 @@ void scanAndDisplayNetworks()
   int n = WiFi.scanNetworks(); // Realizar o escaneamento e obter o número de redes encontradas
 
   if (n == 0) {
-    //watch->tft->fillScreen(TFT_BLACK);
+    
     cls();
     watch->tft->drawString("Nenhuma rede encontrada", 10, 10);
     Serial.println("Nenhuma rede encontrada");
   } else {
-    //watch->tft->fillScreen(TFT_BLACK);
+    
     cls();
     watch->tft->drawString((String(n) + " redes encontradas").c_str(), 10, 10);
     Serial.print(n);
@@ -234,7 +234,7 @@ bool WifiConnected()
   if (WiFi.status() == WL_CONNECTED)
   {
      setupcfg.setupwifi.connected = TRUE;
-     //Serial.println("Wifi connected!");     
+     
      return TRUE;
   }  else
   {
@@ -307,22 +307,7 @@ void Display_Relogio()
     {
         targetTime += 1000;
         ss++;              // Advance second
-        /*
-        if (ss == 60) 
-        {
-            ss = 0;
-            mm++;            // Advance minute
-            if (mm > 59) 
-            {
-                mm = 0;
-                hh++;          // Advance hour
-                if (hh > 23) 
-                {
-                    hh = 0;
-                }
-            }
-        }
-        */
+        
         RTC_Date dt;
         dt = rtc->getDateTime();
         hh = dt.hour;
@@ -343,30 +328,30 @@ void Display_Relogio()
         {
             initial = 0;
             // Erase hour and minute hand positions every minute
-            //ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
+        
             watch->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
             ohx = hx * 62 + 121;
             ohy = hy * 62 + 121;
-            //ttgo->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
+        
             watch->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
             omx = mx * 84 + 120;
             omy = my * 84 + 121;
         }
 
         // Redraw new hand positions, hour and minute hands not erased here to avoid flicker
-        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
+        
         watch->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
         osx = sx * 90 + 121;
         osy = sy * 90 + 121;
-        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        
         watch->tft->drawLine(osx, osy, 120, 121, TFT_RED);
-        //ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
+        
         watch->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
-        //ttgo->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
+        
         watch->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
-        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        
         watch->tft->drawLine(osx, osy, 120, 121, TFT_RED);
-        //ttgo->tft->fillCircle(120, 121, 3, TFT_RED);
+        
         watch->tft->fillCircle(120, 121, 3, TFT_RED);
     }
 }
@@ -443,33 +428,20 @@ void cls()
 /*Imprime na tela*/
 void printxy(int x,int y, char *info)
 {
-    //ttgo->tft->fillScreen(TFT_BLACK);
-    //watch->tft->fillScreen(TFT_BLACK);
-    cls();
-    //ttgo->tft->drawString(info,  x, y, 4);
     watch->tft->drawString(info,  x, y, 4);
-    //ttgo->tft->setTextFont(4);
+    
     watch->tft->setTextFont(4);
-    //ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);
+    
     watch->tft->setTextColor(TFT_WHITE, TFT_BLACK);
 }
 
 void normal_energy()
 {
-  //ttgo->openBL();
   watch->openBL();
-  // Colocar o ESP32 em modo de suspensão
-  //esp_sleep_enable_timer_wakeup();
-
 }
 void low_energy()
 {
-  //ttgo->closeBL();         
   watch->closeBL(); 
-  // Habilitar o pino GPIO para acordar o ESP32 quando for HIGH
-  //esp_sleep_enable_ext0_wakeup((gpio_num_t)wakeUpPin, HIGH);
-  // Colocar o ESP32 em modo de suspensão
-  //esp_deep_sleep_start();        
 }
 
 
@@ -487,13 +459,13 @@ static uint8_t conv2d(const char *p)
 void AcendeDisplay()
 {
   normal_energy();
-  //ttgo->openBL();
+  
 }
 
 void ApagaDisplay()
 {
   low_energy();
-  //ttgo->closeBL();
+  
 }
 
 
@@ -527,20 +499,23 @@ void Start_definicoes()
 
 void Start_mic()
 {
-  
-
+    cls();
+    Serial.println("Iniciou o Start mic");
+    watch->lvgl_begin();
     lv_obj_t *text = lv_label_create(lv_scr_act(), NULL);
+    Serial.println("Iniciou o Start mic1");
     lv_label_set_text(text, "PDM Microphone Test");
+    Serial.println("Iniciou o Start mic1b");
     lv_obj_align(text, NULL, LV_ALIGN_IN_TOP_MID, 0, 20);
-
+    Serial.println("Iniciou o Start mic2");
     chart = lv_chart_create(lv_scr_act(), NULL);
     lv_obj_set_size(chart, 200, 150);
     lv_obj_align(chart, NULL, LV_ALIGN_CENTER, 0, 0);
     lv_chart_set_type(chart,  LV_CHART_TYPE_LINE);   /*Show lines and points too*/
     lv_chart_set_range(chart, 0, 800);
-
+    Serial.println("Iniciou o Start mic3");
     ser1 = lv_chart_add_series(chart, LV_COLOR_RED);
-
+    Serial.println("Iniciou o Start mic4");
     i2s_config_t i2s_config = {
         .mode = (i2s_mode_t)(I2S_MODE_MASTER | I2S_MODE_RX | I2S_MODE_PDM),
         .sample_rate =  44100,
@@ -551,6 +526,7 @@ void Start_mic()
         .dma_buf_count = 2,
         .dma_buf_len = 128,
     };
+    Serial.println("Iniciou o Start mic5");
 
     i2s_pin_config_t i2s_cfg;
     i2s_cfg.bck_io_num   = I2S_PIN_NO_CHANGE;
@@ -558,9 +534,12 @@ void Start_mic()
     i2s_cfg.data_out_num = I2S_PIN_NO_CHANGE;
     i2s_cfg.data_in_num  = MIC_DATA;
 
+
+    Serial.println("Iniciou o Start mic6");
     i2s_driver_install(I2S_NUM_0, &i2s_config, 0, NULL);
     i2s_set_pin(I2S_NUM_0, &i2s_cfg);
     i2s_set_clk(I2S_NUM_0, 44100, I2S_BITS_PER_SAMPLE_16BIT, I2S_CHANNEL_MONO);
+    Serial.println("Fechou o Start mic");
 }
 
 void Start_tft()
@@ -569,15 +548,9 @@ void Start_tft()
     watch = TTGOClass::getWatch();
     watch->begin();
     watch->openBL();
-    //ttgo = TTGOClass::getWatch();
-    //ttgo->begin();
-    //ttgo->openBL();
-    //tft = watch->tft;
-
-    //ttgo->tft->fillScreen(TFT_BLACK);
-    //watch->tft->fillScreen(TFT_BLACK);
+  
     cls();
-    //ttgo->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically  
+  
     watch->tft->setTextColor(TFT_WHITE, TFT_BLACK);  // Adding a background colour erases previous text automatically  
     
    
@@ -596,9 +569,9 @@ void Start_Power()
     esp_sleep_enable_ext0_wakeup((gpio_num_t)AXP202_INT, HIGH);
 
     //!Clear IRQ unprocessed  first
-    //ttgo->power->enableIRQ(AXP202_PEK_SHORTPRESS_IRQ | AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_IRQ, true);
+  
     watch->power->enableIRQ(AXP202_PEK_SHORTPRESS_IRQ | AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_IRQ, true);
-    //ttgo->power->clearIRQ();
+  
     watch->power->clearIRQ();
 
 
@@ -631,10 +604,10 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   if(maquina1->estado_atual == EN_WATCH01)
   {
     Serial.println("Mudou estado:EN_WATCH01");
-    //watch->tft->fillScreen(TFT_BLACK); 
+  
     cls();
     tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
-    //Start_Relogio();
+  
     AcendeDisplay();
   } else
   if(maquina1->estado_atual == EN_REPOUSO)
@@ -655,13 +628,13 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   } else 
   if(maquina1->estado_atual == EN_SETCLOCK)
   {
-    //watch->tft->fillScreen(TFT_BLACK);
+  
     cls();
     drawSTATUS(false);
   } else
   if(maquina1->estado_atual == EN_WIFI)
   {
-        //watch->tft->fillScreen(TFT_BLACK);
+  
         cls();
         watch->tft->drawString("Conectado!", 10, 10);
         Serial.println("Conectado!");
@@ -685,10 +658,9 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
 void Start_Relogio()
 {
   // Draw clock face
-    //ttgo->tft->fillCircle(120, 120, 118, TFT_WHITE);
     watch->tft->fillCircle(120, 120, 118, TFT_WHITE);
-    //ttgo->tft->fillCircle(120, 120, 110, TFT_BLACK);
-    //watch->tft->fillCircle(120, 120, 110, TFT_BLACK);
+  
+  
     cls();
 
     // Draw 12 lines
@@ -700,7 +672,7 @@ void Start_Relogio()
         x1 = sx * 100 + 120;
         yy1 = sy * 100 + 120;
 
-        //ttgo->tft->drawLine(x0, yy0, x1, yy1, TFT_RED);
+  
         watch->tft->drawPixel(x0, yy0, TFT_WHITE);
     }
 
@@ -711,7 +683,7 @@ void Start_Relogio()
         x0 = sx * 102 + 120;
         yy0 = sy * 102 + 120;
         // Draw minute markers
-        //ttgo->tft->drawPixel(x0, yy0, TFT_WHITE);
+  
         watch->tft->drawPixel(x0, yy0, TFT_WHITE);
         // Draw main quadrant dots
         if (i == 0 || i == 180) //ttgo->tft->fillCircle(x0, yy0, 2, TFT_WHITE);
@@ -726,13 +698,13 @@ void Start_Relogio()
     // Draw text at position 120,260 using fonts 4
     // Only font numbers 2,4,6,7 are valid. Font 6 only contains characters [space] 0 1 2 3 4 5 6 7 8 9 : . - a p m
     // Font 7 is a 7 segment font and only contains characters [space] 0 1 2 3 4 5 6 7 8 9 : .
-    // ttgo->tft->drawCentreString("Time flies", 120, 260, 4);
+  
     targetTime = millis() + 1000;
 }
 
 
 void Wellcome()
-{ //textWidth
+{ 
   watch->tft->setTextFont(4);
   watch->tft->drawString("Maurinsoft", 60, 80);
   watch->tft->setTextFont(4);
@@ -741,7 +713,7 @@ void Wellcome()
   Serial.println("Maurinsoft - Firmware ");
   Serial.print("Versão:");
   Serial.println(VERSAO); 
-  //esp_sleep_enable_timer_wakeup(tempoDeSuspensao);
+  
   sleep(4);
   
 }
@@ -749,11 +721,8 @@ void Wellcome()
 void Start_Clock()
 {
     //  Receive as a local variable for easy writing
-    //rtc = ttgo->rtc;
+  
     rtc = watch->rtc;
-    //tft = ttgo->tft;
-    //tft = watch->tft;
-    // Time check will be done, if the time is incorrect, it will be set to compile time
     rtc->check();
 
     // Some settings of BLE
@@ -767,7 +736,7 @@ void Start_Touch()
     pinMode(TOUCH_INT, INPUT);
     // Habilitar o pino GPIO para acordar o ESP32 quando for HIGH
     esp_sleep_enable_ext0_wakeup((gpio_num_t)TOUCH_INT, HIGH);
-    //esp_sleep_enable_touchpad_wakeup();
+  
 }
 
 
@@ -780,7 +749,7 @@ void setup(void)
 {
     Start_Serial();    
     Start_definicoes(); //Iniciando definicoes de ambiente    
-    //Wellcome();
+  
     
     
     Start_tft();
@@ -800,35 +769,29 @@ void setup(void)
 
 void LePower()
 {
-    //Serial.println(irq); 
+  
     if(irq) 
     {
         irq = false;
-        //ttgo->power->readIRQ();
+  
         watch->power->readIRQ();
-        //if (ttgo->power->isVbusPlugInIRQ()) {
+  
         if (watch->power->isVbusPlugInIRQ()) {
-            //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
-            //ttgo->tft->drawString("Power Plug In", 25, 100);
             Serial.println("Power Plug In");
             flgpower = true;
         }
-        //if (ttgo->power->isVbusRemoveIRQ()) {
+  
         if (watch->power->isVbusRemoveIRQ()) {          
-            //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
-            //ttgo->tft->drawString("Power Remove", 25, 100);
             Serial.println("Power Remove");
             flgpower = false;
         }
         //if (ttgo->power->isPEKShortPressIRQ()) 
         if (watch->power->isPEKShortPressIRQ())         
         {
-            //ttgo->tft->fillRect(20, 100, 200, 85, TFT_BLACK);
-            //ttgo->tft->drawString("PowerKey Press", 25, 100);
             Serial.println("PowerKey Press");
             flgbutton = true;
         }
-        //ttgo->power->clearIRQ();
+  
         watch->power->clearIRQ();
     }
     
@@ -876,10 +839,6 @@ void Le_Touch()
         touch.move = TC_NONE;      
         touch.flgtouch = TRUE; /*Seta valor*/
         MarcaTempoInicio();
-        //Serial.print("XIN:");
-        //Serial.println(touch.xIn);
-        //Serial.print("YIN:");
-        //Serial.println(touch.yIn);        
       }
    } else 
    {
@@ -889,10 +848,6 @@ void Le_Touch()
         //Chama evento de retirar Analisar touch
         touch.flgtouch = FALSE;
         
-        //Serial.print("X_Out:");
-        //Serial.println(touch.xOut);
-        //Serial.print("Y_Out:");
-        //Serial.println(touch.yOut);
         AnalisaTouch();
         
       }
@@ -902,6 +857,7 @@ void Le_Touch()
 
 void Le_MIC()
 {
+    Serial.println("Start Le_MIC");
     size_t read_len = 0;
     micval.j = micval.j + 1;
     i2s_read(I2S_NUM_0, (char *) buffer, BUFFER_SIZE, &read_len, portMAX_DELAY);
@@ -946,6 +902,7 @@ void Le_MIC()
     }
     lv_task_handler();
     delay(5);
+    Serial.println("Finalizou Le_MIC");
 }
 
 void Leituras()
@@ -957,6 +914,9 @@ void Leituras()
       if(touch.press)
       {
         Le_MIC();
+      } else
+      {
+        printxy(10, 10, "Pressione a tela");
       }
    }
    WifiConnected();
@@ -974,16 +934,16 @@ void MedeTempo()
 
         if (tempo_decorrido >= INTERVALO_10_SEGUNDOS) 
         {
-            // 10 segundos se passaram
-            //printf("10 segundos se passaram.\n");
-            //tempo_inicio = tempo_atual; // Reiniciar a contagem
-            Serial.println("MedeTempo em Repouso");
+            if(maquina.estado_atual!= EN_MIC)
+            {
+              // 10 segundos se passaram
+              Serial.println("MedeTempo em Repouso");           
             
-            
-            MudaEstado(&maquina, EN_REPOUSO); //Muda o estado da maquina de estado
+              MudaEstado(&maquina, EN_REPOUSO); //Muda o estado da maquina de estado
+            }
         }
 
-        //vTaskDelay(pdMS_TO_TICKS(100)); // Adicionar um pequeno atraso para reduzir a carga da CPU
+  
   }
 }
 
@@ -998,7 +958,7 @@ void AnalisaTouch()
   if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy<LIMITCLICK&&descy>-LIMITCLICK)
   {
     touch.move = TC_CLICK;
-    //Serial.println("CLICK");
+  
   } else
   {
     if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy<-LIMITCLICK)
@@ -1009,19 +969,19 @@ void AnalisaTouch()
       if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy>LIMITCLICK)
       {
         touch.move = TC_MOVEDOWN;
-        //Serial.println("MOVE DOWN");
+  
       } else
       {
         if(descy<LIMITCLICK&&descy>-LIMITCLICK&&descx<-LIMITCLICK)
         {
-          touch.move = TC_MOVELEFT;
-          //Serial.println("MOVE LEFT");
+          touch.move = TC_MOVERIGHT;
+  
         } else
         {
           if(descy<LIMITCLICK&&descy>-LIMITCLICK&&descx>LIMITCLICK)
           {
-            touch.move = TC_MOVERIGHT;
-            //Serial.println("MOVE RIGHT");
+            touch.move = TC_MOVELEFT;
+  
           }
         }
       }
@@ -1033,8 +993,7 @@ void AnalisaTouch()
 //Analisa sinais obtidos de leituras
 void Analisa()
 {
-  // EN_SETCLOCK, //Configura o relogio  
-  //EN_WATCH01, //Mostrando o display
+  
   if(flgbutton) /*Controle de pressionar botao*/
   {
          /*Desliga ou liga a tela*/  
@@ -1099,7 +1058,7 @@ void Analisa()
      } else 
      if(touch.move == TC_MOVELEFT)
      {
-       //Serial.println("MOVE LEFT");
+      
        if(maquina.estado_atual==EN_WATCH01) 
        {
          MudaEstado(&maquina,EN_MIC);
@@ -1107,7 +1066,7 @@ void Analisa()
      } else 
      if(touch.move == TC_MOVERIGHT)
      {
-       //Serial.println("MOVE RIGHT");
+      
        if (maquina.estado_atual==EN_MIC)
        {
          MudaEstado(&maquina,EN_WATCH01);
@@ -1118,24 +1077,30 @@ void Analisa()
    }
 }
 
+void MostraHora()
+{
+  if (millis() - interval > 1000) 
+  {
+    interval = millis();
+
+    watch->tft->setTextColor(TFT_YELLOW, TFT_BLACK);
+
+    watch->tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_DD_MM_YYYY), 50, 200, 4);
+
+    watch->tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_HMS), 5, 118, 7);
+  }
+}
+
 //Maquina de estado
 void EstadoAtual()
 {
   if(maquina.estado_atual != EN_REPOUSO)
   {
-
-      if (millis() - interval > 1000) 
+      if(maquina.estado_atual != EN_MIC)
       {
-            interval = millis();
-
-            watch->tft->setTextColor(TFT_YELLOW, TFT_BLACK);
-
-            watch->tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_DD_MM_YYYY), 50, 200, 4);
-
-            watch->tft->drawString(rtc->formatDateTime(PCF_TIMEFORMAT_HMS), 5, 118, 7);
+        MostraHora();
       }
-      //Serial.print("Estado Atual: ");
-      //Serial.println(maquina.estado_atual);
+      
       if(maquina.estado_atual == EN_WATCH01)
       {      
           //Serial.print('.');
