@@ -301,6 +301,76 @@ bool setDateTimeFormBLE(const char *str)
     return true;
 }
 
+void Display_Relogio()
+{
+    if (targetTime < millis()) 
+    {
+        targetTime += 1000;
+        ss++;              // Advance second
+        /*
+        if (ss == 60) 
+        {
+            ss = 0;
+            mm++;            // Advance minute
+            if (mm > 59) 
+            {
+                mm = 0;
+                hh++;          // Advance hour
+                if (hh > 23) 
+                {
+                    hh = 0;
+                }
+            }
+        }
+        */
+        RTC_Date dt;
+        dt = rtc->getDateTime();
+        hh = dt.hour;
+        mm = dt.minute;
+        ss = dt.second;
+        // Pre-compute hand degrees, x & y coords for a fast screen update
+        sdeg = ss * 6;                // 0-59 -> 0-354
+        mdeg = mm * 6 + sdeg * 0.01666667; // 0-59 -> 0-360 - includes seconds
+        hdeg = hh * 30 + mdeg * 0.0833333; // 0-11 -> 0-360 - includes minutes and seconds
+        hx = cos((hdeg - 90) * 0.0174532925);
+        hy = sin((hdeg - 90) * 0.0174532925);
+        mx = cos((mdeg - 90) * 0.0174532925);
+        my = sin((mdeg - 90) * 0.0174532925);
+        sx = cos((sdeg - 90) * 0.0174532925);
+        sy = sin((sdeg - 90) * 0.0174532925);
+
+        if (ss == 0 || initial) 
+        {
+            initial = 0;
+            // Erase hour and minute hand positions every minute
+            //ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
+            watch->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
+            ohx = hx * 62 + 121;
+            ohy = hy * 62 + 121;
+            //ttgo->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
+            watch->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
+            omx = mx * 84 + 120;
+            omy = my * 84 + 121;
+        }
+
+        // Redraw new hand positions, hour and minute hands not erased here to avoid flicker
+        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
+        watch->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
+        osx = sx * 90 + 121;
+        osy = sy * 90 + 121;
+        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        watch->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        //ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
+        watch->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
+        //ttgo->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
+        watch->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
+        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        watch->tft->drawLine(osx, osy, 120, 121, TFT_RED);
+        //ttgo->tft->fillCircle(120, 121, 3, TFT_RED);
+        watch->tft->fillCircle(120, 121, 3, TFT_RED);
+    }
+}
+
 class MyCallbacks: public BLECharacteristicCallbacks
 {
     void onWrite(BLECharacteristic *pCharacteristic)
@@ -782,69 +852,7 @@ void drawSTATUS(bool status)
     watch->tft->drawString(str, x + 2, y);
 }
 
-void Display_Relogio()
-{
-    if (targetTime < millis()) 
-    {
-        targetTime += 1000;
-        ss++;              // Advance second
-        if (ss == 60) 
-        {
-            ss = 0;
-            mm++;            // Advance minute
-            if (mm > 59) 
-            {
-                mm = 0;
-                hh++;          // Advance hour
-                if (hh > 23) 
-                {
-                    hh = 0;
-                }
-            }
-        }
 
-        // Pre-compute hand degrees, x & y coords for a fast screen update
-        sdeg = ss * 6;                // 0-59 -> 0-354
-        mdeg = mm * 6 + sdeg * 0.01666667; // 0-59 -> 0-360 - includes seconds
-        hdeg = hh * 30 + mdeg * 0.0833333; // 0-11 -> 0-360 - includes minutes and seconds
-        hx = cos((hdeg - 90) * 0.0174532925);
-        hy = sin((hdeg - 90) * 0.0174532925);
-        mx = cos((mdeg - 90) * 0.0174532925);
-        my = sin((mdeg - 90) * 0.0174532925);
-        sx = cos((sdeg - 90) * 0.0174532925);
-        sy = sin((sdeg - 90) * 0.0174532925);
-
-        if (ss == 0 || initial) 
-        {
-            initial = 0;
-            // Erase hour and minute hand positions every minute
-            //ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
-            watch->tft->drawLine(ohx, ohy, 120, 121, TFT_BLACK);
-            ohx = hx * 62 + 121;
-            ohy = hy * 62 + 121;
-            //ttgo->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
-            watch->tft->drawLine(omx, omy, 120, 121, TFT_BLACK);
-            omx = mx * 84 + 120;
-            omy = my * 84 + 121;
-        }
-
-        // Redraw new hand positions, hour and minute hands not erased here to avoid flicker
-        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
-        watch->tft->drawLine(osx, osy, 120, 121, TFT_BLACK);
-        osx = sx * 90 + 121;
-        osy = sy * 90 + 121;
-        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
-        watch->tft->drawLine(osx, osy, 120, 121, TFT_RED);
-        //ttgo->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
-        watch->tft->drawLine(ohx, ohy, 120, 121, TFT_WHITE);
-        //ttgo->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
-        watch->tft->drawLine(omx, omy, 120, 121, TFT_WHITE);
-        //ttgo->tft->drawLine(osx, osy, 120, 121, TFT_RED);
-        watch->tft->drawLine(osx, osy, 120, 121, TFT_RED);
-        //ttgo->tft->fillCircle(120, 121, 3, TFT_RED);
-        watch->tft->fillCircle(120, 121, 3, TFT_RED);
-    }
-}
 
 void Le_Touch()
 {
