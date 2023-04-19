@@ -27,19 +27,23 @@
 #include <BLEUtils.h>
 #include <BLEServer.h>
 #include <WiFi.h>
+#include <WiFiClientSecure.h>
 #include <driver/i2s.h>
 #include "esp_sleep.h"
+#include <ArduinoJson.h>
+#include <base64.h>
 
 
 
 #define BUFFER_SIZE (2*1024)
 uint8_t buffer[BUFFER_SIZE] = {0};
+uint8_t buffer_len = 0;
 
 // TWATCH 2020 V3 PDM microphone pin
 #define MIC_DATA            2
 #define MIC_CLOCK           0
 
-#define VERSAO "0.4"
+#define VERSAO "0.5"
 //#define BOTAO_POWER 36
 #define LIMITCLICK 60
 
@@ -48,6 +52,7 @@ uint64_t tempoDeSuspensao = 1000000;
 #define INTERVALO_10_SEGUNDOS 10000000LL // 10 segundos em microssegundos
 
 TTGOClass *watch = nullptr;
+AXP20X_Class *power  = nullptr;
 //TFT_eSPI *tft;
 PCF8563_Class *rtc;
 
@@ -143,6 +148,13 @@ typedef struct
   bool connected;
 } SetupWifi;
 
+typedef struct
+{
+    char googleApiKey;  //googleApiKey = "your_API_KEY";
+    char *googleHost; //= "speech.googleapis.com";
+    int googlePort;// = 443;
+} GOOGLEAPI;
+
 //Estrutura de Setup
 typedef struct 
 {
@@ -152,6 +164,7 @@ typedef struct
 //Variavies globais
 
 MaquinaEstado maquina;
+GOOGLEAPI googleapi; //Cria variaveis da googleapi
 
 TouchEstado touch;
 SetupCFG setupcfg; //Setup geral do Relogio
@@ -438,10 +451,48 @@ void printxy(int x,int y, char *info)
 void normal_energy()
 {
   watch->openBL();
+  //watch->displayWakeup();
+  //watch->displayOff();
+  power->clearIRQ();
+
 }
 void low_energy()
 {
-  watch->closeBL(); 
+  power->clearIRQ();
+  //watch->closeBL(); 
+  //watch->displaySleep();
+  //watch->displayOff();
+  //esp_deep_sleep_start();
+
+   // Set screen and touch to sleep mode
+    watch->displaySleep();
+
+    /*
+    When using T - Watch2020V1, you can directly call power->powerOff(),
+    if you use the 2019 version of TWatch, choose to turn off
+    according to the power you need to turn off
+    */
+#ifdef LILYGO_WATCH_2020_V1
+    watch->powerOff();
+    // LDO2 is used to power the display, and LDO2 can be turned off if needed
+    // power->setPowerOutPut(AXP202_LDO2, false);
+#else
+    power->setPowerOutPut(AXP202_LDO3, false);
+    power->setPowerOutPut(AXP202_LDO4, false);
+    power->setPowerOutPut(AXP202_LDO2, false);
+    // The following power channels are not used
+    power->setPowerOutPut(AXP202_EXTEN, false);
+    power->setPowerOutPut(AXP202_DCDC2, false);
+#endif
+
+    // Use ext0 for external wakeup
+    esp_sleep_enable_ext0_wakeup((gpio_num_t)AXP202_INT, LOW);
+
+    // Use ext1 for external wakeup
+    //esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
+
+    esp_deep_sleep_start();
+
 }
 
 
@@ -494,6 +545,12 @@ void Start_definicoes()
   sprintf(setupcfg.setupwifi.ssid,"maurin");
   memset(setupcfg.setupwifi.pass,'\0',sizeof(setupcfg.setupwifi.pass));
   sprintf(setupcfg.setupwifi.pass,"1425361425"); 
+
+  /*Informações google api*/
+  memset(&googleapi,'\0',sizeof(GOOGLEAPI));
+  sprintf(&googleapi.googleApiKey,"your_API_KEY");
+  sprintf(googleapi.googleHost,"speech.googleapis.com");
+  googleapi.googleHost = "443";
 
 }
 
@@ -567,14 +624,26 @@ void Start_Power()
 
     // Habilitar o pino GPIO para acordar o ESP32 quando for HIGH
     esp_sleep_enable_ext0_wakeup((gpio_num_t)AXP202_INT, HIGH);
+    power = watch->power;
 
-    //!Clear IRQ unprocessed  first
-  
+  #ifdef LILYGO_WATCH_2020_V1
+    watch->powerOff();
+    // LDO2 is used to power the display, and LDO2 can be turned off if needed
+    // power->setPowerOutPut(AXP202_LDO2, false);
+#else
+    power->setPowerOutPut(AXP202_LDO3, false);
+    power->setPowerOutPut(AXP202_LDO4, false);
+    power->setPowerOutPut(AXP202_LDO2, false);
+    // The following power channels are not used
+    power->setPowerOutPut(AXP202_EXTEN, false);
+    power->setPowerOutPut(AXP202_DCDC2, false);
+#endif
+     // Use ext1 for external wakeup
+    //esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
+
+    //!Clear IRQ unprocessed  first  
     watch->power->enableIRQ(AXP202_PEK_SHORTPRESS_IRQ | AXP202_VBUS_REMOVED_IRQ | AXP202_VBUS_CONNECT_IRQ | AXP202_CHARGING_IRQ, true);
-  
     watch->power->clearIRQ();
-
-
 }
 
 void proximoEstado(MaquinaEstado *maquina1) 
@@ -855,12 +924,118 @@ void Le_Touch()
 
 }
 
+int EnviaParaGoogle(const char *jsonRequest, char *outputText) {
+  // Conectar ao Wi-Fi se ainda não estiver conectado
+  if (WiFi.status() != WL_CONNECTED) 
+  {
+            return 0; // Falha ao conectar ao Wi-Fi
+  
+  }
+
+  // Conectar ao servidor do Google Speech-to-Text API
+  WiFiClientSecure client;
+  if (!client.connect(googleapi.googleHost, googleapi.googlePort)) {
+    return 0; // Falha ao conectar ao servidor
+  }
+
+  // Preparar cabeçalhos da requisição HTTP POST
+  String requestHeaders = "POST /v1/speech:recognize?key=" + String( googleapi.googleApiKey) + " HTTP/1.1\r\n";
+  requestHeaders += "Host: " + String(googleapi.googleHost) + "\r\n";
+  requestHeaders += "Content-Type: application/json\r\n";
+  requestHeaders += "Content-Length: " + String(strlen(jsonRequest)) + "\r\n";
+  requestHeaders += "Connection: close\r\n\r\n";
+
+  // Enviar requisição para o Google Speech-to-Text API
+  client.print(requestHeaders);
+  client.print(jsonRequest);
+
+  // Aguardar a resposta e ler o cabeçalho da resposta HTTP
+  while (client.connected()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r") {
+      break;
+    }
+  }
+
+  // Ler o corpo da resposta (JSON)
+  String jsonResponse = client.readString();
+
+  // Analisar a resposta JSON
+  DynamicJsonDocument jsonBuffer(2048);
+  deserializeJson(jsonBuffer, jsonResponse);
+  JsonObject json = jsonBuffer.as<JsonObject>();
+
+  // Verificar se a resposta contém o resultado da transcrição
+  if (json.containsKey("results") && json["results"].as<JsonArray>().size() > 0) {
+    const char *transcript = json["results"][0]["alternatives"][0]["transcript"];
+    strcpy(outputText, transcript);
+    return 1; // Sucesso
+  } else {
+    return 0; // Falha
+  }
+}
+
+void EmpacoteVOZ(const uint8_t *audioData, size_t audioDataSize, char *jsonOutput) 
+{
+  /*
+  // Configurações do Google Speech-to-Text API
+  const char *languageCode = "pt-BR";
+  const char *encoding = "LINEAR16";
+  int32_t sampleRateHertz = 16000;
+
+  // Calcular o tamanho necessário para o buffer JSON
+  const size_t base64AudioSize = (audioDataSize * 4 + 2) / 3 + 1; // Tamanho do áudio em Base64
+  const size_t jsonBufferSize = 300 + base64AudioSize; // Tamanho necessário para o buffer JSON
+
+  // Criar buffer JSON e objeto JSON
+  DynamicJsonDocument jsonBuffer(jsonBufferSize);
+  JsonObject json = jsonBuffer.to<JsonObject>();
+
+  // Adicionar informações do áudio ao objeto JSON
+  JsonObject config = json.createNestedObject("config");
+  config["encoding"] = encoding;
+  config["sampleRateHertz"] = sampleRateHertz;
+  config["languageCode"] = languageCode;
+
+  // Converter áudio para Base64
+  String base64Audio;
+  base64Audio.reserve(base64AudioSize);
+  base64::encode(audioData, audioDataSize, base64Audio);
+
+  // Adicionar áudio codificado em Base64 ao objeto JSON
+  JsonObject audio = json.createNestedObject("audio");
+  audio["content"] = base64Audio;
+
+  // Serializar o objeto JSON no buffer de saída fornecido
+  serializeJson(json, jsonOutput);
+  */
+}
+
+void EnviaVOZ()
+{
+  char json[5000];
+  memset(buffer,'\0',sizeof(buffer));
+  buffer_len = 0;
+  memset(json,'\0',sizeof(json));
+  EmpacoteVOZ(buffer, buffer_len, json);
+  char texto[1000];
+  memset(texto,'\0',sizeof(texto));
+  if (EnviaParaGoogle(json,texto) !=0)
+  {
+    printxy(10,100,texto);
+  }
+
+
+
+}
+
 void Le_MIC()
 {
     Serial.println("Start Le_MIC");
     size_t read_len = 0;
     micval.j = micval.j + 1;
     i2s_read(I2S_NUM_0, (char *) buffer, BUFFER_SIZE, &read_len, portMAX_DELAY);
+    buffer_len = buffer_len+BUFFER_SIZE;
     for (int i = 0; i < BUFFER_SIZE / 2 ; i++) {
         micval.val1 = buffer[i * 2];
         micval.val2 = buffer[i * 2 + 1] ;
@@ -917,6 +1092,8 @@ void Leituras()
       } else
       {
         printxy(10, 10, "Pressione a tela");
+        if (buffer)
+        EnviaVOZ();
       }
    }
    WifiConnected();
