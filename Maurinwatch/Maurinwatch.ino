@@ -31,7 +31,9 @@
 #include <driver/i2s.h>
 #include "esp_sleep.h"
 #include <ArduinoJson.h>
-#include <base64.h>
+#include "crypto/base64.h"
+#include <arduino.h>
+#include <math.h>
 
 
 
@@ -46,6 +48,9 @@ uint8_t buffer_len = 0;
 #define VERSAO "0.5"
 //#define BOTAO_POWER 36
 #define LIMITCLICK 60
+
+#define MINIMALCUR 60 /*Corrente minima*/
+#define MAXIMALCUR 380 /*Corrente maxima*/
 
 // Tempo de suspensão em microssegundos (1 segundo = 1000000 microssegundos)
 uint64_t tempoDeSuspensao = 1000000;
@@ -62,8 +67,7 @@ const int           define_max = 200;
 const int           define_avg = 15;
 const int           define_zero = 3000;
 
-bool lenergy = false;
-bool flgpower = false;
+//bool lenergy = false;
 bool flgbutton = false;
 
 
@@ -122,6 +126,12 @@ typedef struct
 
 typedef struct
 {
+    uint16_t cur; /*Percentual da Bateria*/
+    bool flgpower;
+} PowerDC;
+
+typedef struct
+{
   float               val_avg = 0;
   float               val_avg_1 = 0;
   float               all_val_avg = 0;
@@ -159,6 +169,7 @@ typedef struct
 typedef struct 
 {
   SetupWifi setupwifi;
+  PowerDC powerdc; 
 } SetupCFG;
 
 //Variavies globais
@@ -203,6 +214,9 @@ void ConnectWifi();
 bool WifiConnected();
 void ConnectWifi();
 void Le_MIC();
+void Motor_Toque();
+
+
 
 void scanAndDisplayNetworks() 
 {
@@ -525,6 +539,13 @@ void Start_Serial()
   Serial.begin(115200);
 }
 
+//Inicia o motor
+void Start_Motor()
+{
+    //! begin motor attach to 33 pin , In TWatch-2020 it is IO4
+    watch->motor_begin();
+}
+
 void Start_definicoes()
 {
   irq = false;
@@ -637,6 +658,7 @@ void Start_Power()
     // The following power channels are not used
     power->setPowerOutPut(AXP202_EXTEN, false);
     power->setPowerOutPut(AXP202_DCDC2, false);
+    watch->power->setChargeControlCur(MINIMALCUR);
 #endif
      // Use ext1 for external wakeup
     //esp_sleep_enable_ext1_wakeup(GPIO_SEL_35, ESP_EXT1_WAKEUP_ALL_LOW);
@@ -783,7 +805,7 @@ void Wellcome()
   Serial.print("Versão:");
   Serial.println(VERSAO); 
   
-  sleep(4);
+  //sleep(4);
   
 }
 
@@ -814,6 +836,11 @@ void Start_Wifi()
  ConnectWifi(); 
 }
 
+void Motor_Toque()
+{
+   watch->motor->onec();
+}
+
 void setup(void)
 {
     Start_Serial();    
@@ -826,12 +853,14 @@ void setup(void)
     Start_Power();
     Start_Clock();
     Start_Wifi();
+    Start_Motor();
     
     Serial.println("Sai aqui");
     
     Serial.println("Finalizou Setup");   
     MudaEstado(&maquina, EN_SPLASH); 
-    MudaEstado(&maquina, EN_WATCH01);   
+    MudaEstado(&maquina, EN_WATCH01); 
+    Motor_Toque();  
 
 }
 
@@ -847,12 +876,14 @@ void LePower()
   
         if (watch->power->isVbusPlugInIRQ()) {
             Serial.println("Power Plug In");
-            flgpower = true;
+            setupcfg.powerdc.flgpower = true;
+            //setupcfg.powerdc.cur = ((watch->power->getChargeControlCur()*100) / MAXIMALCUR);
         }
   
         if (watch->power->isVbusRemoveIRQ()) {          
             Serial.println("Power Remove");
-            flgpower = false;
+            setupcfg.powerdc.flgpower = false;
+            //setupcfg.powerdc.cur =  ((watch->power->getChargeControlCur()*100) / MAXIMALCUR);
         }
         //if (ttgo->power->isPEKShortPressIRQ()) 
         if (watch->power->isPEKShortPressIRQ())         
@@ -882,6 +913,9 @@ void drawSTATUS(bool status)
 
     watch->tft->setTextFont(2);
     watch->tft->drawString(str, x + 2, y);
+    watch->tft->setTextFont(2);
+    str = String(setupcfg.powerdc.cur);
+    watch->tft->drawString(str, 0, y);
 }
 
 
@@ -974,10 +1008,10 @@ int EnviaParaGoogle(const char *jsonRequest, char *outputText) {
     return 0; // Falha
   }
 }
-
+/*
 void EmpacoteVOZ(const uint8_t *audioData, size_t audioDataSize, char *jsonOutput) 
 {
-  /*
+  
   // Configurações do Google Speech-to-Text API
   const char *languageCode = "pt-BR";
   const char *encoding = "LINEAR16";
@@ -1008,6 +1042,42 @@ void EmpacoteVOZ(const uint8_t *audioData, size_t audioDataSize, char *jsonOutpu
 
   // Serializar o objeto JSON no buffer de saída fornecido
   serializeJson(json, jsonOutput);
+  
+}
+*/
+
+void EmpacoteVOZ(const uint8_t *audioData, size_t audioDataSize, char *jsonOutput) 
+{
+  /*
+  // Configurações do Google Speech-to-Text API
+  const char *languageCode = "pt-BR";
+  const char *encoding = "LINEAR16";
+  int32_t sampleRateHertz = 16000;
+
+  // Calcular o tamanho necessário para o buffer JSON
+  const size_t base64AudioSize = calcBase64BufferSize(audioDataSize); // Tamanho do áudio em Base64
+  const size_t jsonBufferSize = 300 + base64AudioSize; // Tamanho necessário para o buffer JSON
+
+  // Criar buffer JSON e objeto JSON
+  DynamicJsonDocument jsonBuffer(jsonBufferSize);
+  JsonObject json = jsonBuffer.to<JsonObject>();
+
+  // Adicionar informações do áudio ao objeto JSON
+  JsonObject config = json.createNestedObject("config");
+  config["encoding"] = encoding;
+  config["sampleRateHertz"] = sampleRateHertz;
+  config["languageCode"] = languageCode;
+
+  // Converter áudio para Base64
+  char base64Audio[base64AudioSize];
+  base64_encode(base64Audio, (char*)audioData, audioDataSize);
+
+  // Adicionar áudio codificado em Base64 ao objeto JSON
+  JsonObject audio = json.createNestedObject("audio");
+  audio["content"] = base64Audio;
+
+  // Serializar o objeto JSON no buffer de saída fornecido
+  serializeJson(json, jsonOutput, jsonBufferSize);
   */
 }
 
@@ -1080,10 +1150,27 @@ void Le_MIC()
     Serial.println("Finalizou Le_MIC");
 }
 
+void Le_Energia()
+{
+  if(setupcfg.powerdc.flgpower==false)
+  {
+    //setupcfg.powerdc.cur =   (uint16_t)((watch->power->getChargeControlCur() / MAXIMALCUR)*100);
+    setupcfg.powerdc.cur = watch->power->getBattPercentage() ;
+  } else
+  {
+    setupcfg.powerdc.cur = 100;
+  }
+  Serial.print("Corrente:");
+  Serial.println(watch->power->getChargeControlCur());
+  Serial.print("Percentual:");
+  Serial.println( watch->power->getBattPercentage() );
+}
+
 void Leituras()
 {
    LePower(); /*Le funcionalidades de interrupcao AXP202 */
    Le_Touch();
+   Le_Energia(); /*Coleta informação da energia*/
    if (maquina.estado_atual == EN_MIC)
    {
       if(touch.press)
