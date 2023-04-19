@@ -34,6 +34,7 @@
 #include "crypto/base64.h"
 #include <arduino.h>
 #include <math.h>
+#include <btAudio.h>
 
 
 
@@ -45,7 +46,7 @@ uint8_t buffer_len = 0;
 #define MIC_DATA            2
 #define MIC_CLOCK           0
 
-#define VERSAO "0.5"
+#define VERSAO "0.6"
 //#define BOTAO_POWER 36
 #define LIMITCLICK 60
 
@@ -58,6 +59,10 @@ uint64_t tempoDeSuspensao = 1000000;
 
 TTGOClass *watch = nullptr;
 AXP20X_Class *power  = nullptr;
+// Sets the name of the audio device
+// Sets the name of the audio device
+btAudio btaudio = btAudio("Maurin_SPK");
+
 //TFT_eSPI *tft;
 PCF8563_Class *rtc;
 
@@ -91,6 +96,7 @@ typedef enum
   EN_SETCLOCK, //Configura o relogio  
   EN_WATCH01, //Mostrando o display
   EN_MIC,     //Envia dados do microfone para o chatgpt
+  EN_BLSPEAK,   //Bluetooth audio
   EN_REPOUSO, //Em repouso   
   EN_FIM      //Fim de opcoes
 } Estado;
@@ -215,6 +221,7 @@ bool WifiConnected();
 void ConnectWifi();
 void Le_MIC();
 void Motor_Toque();
+void Start_BLSpeak();
 
 
 
@@ -252,8 +259,6 @@ void scanAndDisplayNetworks()
     }
   }
 }
-
-
 
 //Verifica se wifi esta conectado
 bool WifiConnected()
@@ -509,8 +514,6 @@ void low_energy()
 
 }
 
-
-
 static uint8_t conv2d(const char *p)
 {
     uint8_t v = 0;
@@ -532,7 +535,6 @@ void ApagaDisplay()
   low_energy();
   
 }
-
 
 void Start_Serial()
 {
@@ -742,6 +744,10 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   if(maquina1->estado_atual == EN_MIC)
   {
     Start_mic();
+  } else
+  if(maquina1->estado_atual == EN_BLSPEAK)
+  {
+    Start_BLSpeak();
   }
 }
 
@@ -809,6 +815,25 @@ void Wellcome()
   
 }
 
+void Start_BLSpeak()
+{
+  watch->openBL();
+  //watch->enableLDO3;
+  watch->enableLDO3(false);
+  //btaudio = btAudio("ESP_Speaker");
+   // start bluetooth audio
+  btaudio.begin();
+  btaudio.reconnect();
+  
+
+  //  attach to pins
+  int bck = TWATCH_DAC_IIS_BCK;
+  int ws = TWATCH_DAC_IIS_WS;
+  int dout = TWATCH_DAC_IIS_DOUT;
+  btaudio.I2S(bck, dout, ws);
+ 
+}
+
 void Start_Clock()
 {
     //  Receive as a local variable for easy writing
@@ -841,13 +866,17 @@ void Motor_Toque()
    watch->motor->onec();
 }
 
+void Start_Bluetooth()
+{
+  //watch->openBL();
+  //watch->openBL();
+}
+
 void setup(void)
 {
     Start_Serial();    
-    Start_definicoes(); //Iniciando definicoes de ambiente    
-  
-    
-    
+    Start_definicoes(); //Iniciando definicoes de ambiente       
+    Start_Bluetooth();
     Start_tft();
     Serial.println("Entra aqui");
     Start_Power();
@@ -1160,10 +1189,10 @@ void Le_Energia()
   {
     setupcfg.powerdc.cur = 100;
   }
-  Serial.print("Corrente:");
-  Serial.println(watch->power->getChargeControlCur());
-  Serial.print("Percentual:");
-  Serial.println( watch->power->getBattPercentage() );
+  //Serial.print("Corrente:");
+  //Serial.println(watch->power->getChargeControlCur());
+  //Serial.print("Percentual:");
+  //Serial.println( watch->power->getBattPercentage() );
 }
 
 void Leituras()
@@ -1326,11 +1355,18 @@ void Analisa()
        if(maquina.estado_atual==EN_WATCH01) 
        {
          MudaEstado(&maquina,EN_MIC);
+       } else 
+       if(maquina.estado_atual==EN_BLSPEAK)
+       {
+         MudaEstado(&maquina,EN_WATCH01);
        }
      } else 
      if(touch.move == TC_MOVERIGHT)
      {
-      
+       if(maquina.estado_atual==EN_WATCH01)
+       {
+         MudaEstado(&maquina,EN_BLSPEAK);
+       } else      
        if (maquina.estado_atual==EN_MIC)
        {
          MudaEstado(&maquina,EN_WATCH01);
