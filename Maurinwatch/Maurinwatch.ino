@@ -61,7 +61,7 @@ TTGOClass *watch = nullptr;
 AXP20X_Class *power  = nullptr;
 // Sets the name of the audio device
 // Sets the name of the audio device
-btAudio btaudio = btAudio("Maurin_SPK");
+//btAudio btaudio = btAudio("Maurin_SPK");
 
 //TFT_eSPI *tft;
 PCF8563_Class *rtc;
@@ -73,7 +73,7 @@ const int           define_avg = 15;
 const int           define_zero = 3000;
 
 //bool lenergy = false;
-bool flgbutton = false;
+
 
 
 bool deviceConnected = false;
@@ -176,14 +176,19 @@ typedef struct
 {
   SetupWifi setupwifi;
   PowerDC powerdc; 
+  float volume;
+  MaquinaEstado maquina;
+  TouchEstado touch;
+  bool flgbutton;
+  btAudio *btaudio;
 } SetupCFG;
 
 //Variavies globais
 
-MaquinaEstado maquina;
+
 GOOGLEAPI googleapi; //Cria variaveis da googleapi
 
-TouchEstado touch;
+//TouchEstado touch;
 SetupCFG setupcfg; //Setup geral do Relogio
 
 #define TFT_GREY 0x5AEB
@@ -222,6 +227,9 @@ void ConnectWifi();
 void Le_MIC();
 void Motor_Toque();
 void Start_BLSpeak();
+void Stop_BLSpeak();
+void Call_Speak();
+void Print_Speak();
 
 
 
@@ -551,17 +559,17 @@ void Start_Motor()
 void Start_definicoes()
 {
   irq = false;
-  maquina.estado_atual = EN_INICIO; //Maquina de estado
+  setupcfg.maquina.estado_atual = EN_INICIO; //Maquina de estado
   Serial.println("Iniciou definicoes");
 
   //Touch Screen
-  touch.xIn = 0;
-  touch.xOut = 0;
-  touch.yIn = 0; 
-  touch.yOut = 0; 
-  touch.flgtouch = false;
-  touch.move = TC_NONE;
-  touch.press = FALSE;
+  setupcfg.touch.xIn = 0;
+  setupcfg.touch.xOut = 0;
+  setupcfg.touch.yIn = 0; 
+  setupcfg.touch.yOut = 0; 
+  setupcfg.touch.flgtouch = false;
+  setupcfg.touch.move = TC_NONE;
+  setupcfg.touch.press = FALSE;
    
   //Start Setup 
   memset(setupcfg.setupwifi.ssid,'\0',sizeof(setupcfg.setupwifi.ssid));
@@ -574,6 +582,7 @@ void Start_definicoes()
   sprintf(&googleapi.googleApiKey,"your_API_KEY");
   sprintf(googleapi.googleHost,"speech.googleapis.com");
   googleapi.googleHost = "443";
+  
 
 }
 
@@ -688,10 +697,21 @@ void MarcaTempoInicio()
   tempo_inicio = esp_timer_get_time(); /*Ajusta a hora para agora*/
 }
 
+void SaiEstado(MaquinaEstado *maquina1,Estado estadoorig, Estado estadonovo)
+{
+  if(estadoorig == EN_BLSPEAK)
+  {
+    Stop_BLSpeak();
+  }
+
+}
+
 void MudaEstado(MaquinaEstado *maquina1, Estado valor)
 {
   Serial.print("Recebeu:");
   Serial.println(valor);
+  //Verifica funcionalidades de Saida
+  SaiEstado(maquina1,maquina1->estado_atual, (Estado)valor);
   maquina1->estado_atual = (Estado)valor;
   /*Inicializa estado atual*/
   if(maquina1->estado_atual == EN_WATCH01)
@@ -743,11 +763,14 @@ void MudaEstado(MaquinaEstado *maquina1, Estado valor)
   } else
   if(maquina1->estado_atual == EN_MIC)
   {
+    cls();
     Start_mic();
   } else
   if(maquina1->estado_atual == EN_BLSPEAK)
   {
+    cls();
     Start_BLSpeak();
+
   }
 }
 
@@ -815,15 +838,45 @@ void Wellcome()
   
 }
 
+//Imprime a tela de Speak
+void Print_Speak()
+{
+  cls();
+  printxy(20,1,"Bluetooth Speaks");
+  //printxy(20,40,"Role para cima");
+  //printxy(20, 65, "Aumenta Volume");
+  printxy(60,100,"Speaker");
+  char strvol[20];
+  memset(strvol,'\0',sizeof(strvol));
+  sprintf(strvol,"%f",setupcfg.volume);
+  printxy(90,130,strvol);
+  //printxy(20,170,"Role para baixo");
+  //printxy(20,190,"Abaixa volume");
+}
+
+//Sai do BLSpeak
+void Stop_BLSpeak()
+{
+  setupcfg.btaudio->end();
+  //dispose(setupcfg.btaudio);
+  setupcfg.btaudio = NULL;
+}
+
+//Entra no BLSpeak
 void Start_BLSpeak()
 {
   watch->openBL();
   //watch->enableLDO3;
-  watch->enableLDO3(false);
+  watch->enableLDO3(true);
+  watch->enableAudio();
+
+  btAudio btaudio = btAudio("Maurin_SPK");
+  setupcfg.btaudio = &btaudio;
+
   //btaudio = btAudio("ESP_Speaker");
    // start bluetooth audio
   btaudio.begin();
-  btaudio.reconnect();
+  //btaudio.reconnect();
   
 
   //  attach to pins
@@ -831,6 +884,10 @@ void Start_BLSpeak()
   int ws = TWATCH_DAC_IIS_WS;
   int dout = TWATCH_DAC_IIS_DOUT;
   btaudio.I2S(bck, dout, ws);
+  btaudio.volume(1.0);
+
+  Print_Speak();
+  
  
 }
 
@@ -887,8 +944,8 @@ void setup(void)
     Serial.println("Sai aqui");
     
     Serial.println("Finalizou Setup");   
-    MudaEstado(&maquina, EN_SPLASH); 
-    MudaEstado(&maquina, EN_WATCH01); 
+    //MudaEstado(&maquina, EN_SPLASH); 
+    MudaEstado(&setupcfg.maquina, EN_WATCH01); 
     Motor_Toque();  
 
 }
@@ -918,7 +975,7 @@ void LePower()
         if (watch->power->isPEKShortPressIRQ())         
         {
             Serial.println("PowerKey Press");
-            flgbutton = true;
+            setupcfg.flgbutton = true;
         }
   
         watch->power->clearIRQ();
@@ -956,29 +1013,29 @@ void Le_Touch()
   // Print touch coordinates to the screen
   if (watch->getTouch(x, y)) 
   {
-      touch.press = TRUE;
-      if(touch.flgtouch == TRUE)
+      setupcfg.touch.press = TRUE;
+      if(setupcfg.touch.flgtouch == TRUE)
       {
         //snprintf(buf, 64, "X:%03d Y:%03d", x, y);
         //tft->drawCentreString(buf, 120, 120, 2);
-        touch.xOut = x;
-        touch.yOut = y;
+        setupcfg.touch.xOut = x;
+        setupcfg.touch.yOut = y;
       }
       else
       {
-        touch.xIn = x;
-        touch.yIn = y;  
-        touch.move = TC_NONE;      
-        touch.flgtouch = TRUE; /*Seta valor*/
+        setupcfg.touch.xIn = x;
+        setupcfg.touch.yIn = y;  
+        setupcfg.touch.move = TC_NONE;      
+        setupcfg.touch.flgtouch = TRUE; /*Seta valor*/
         MarcaTempoInicio();
       }
    } else 
    {
-      touch.press = FALSE;
-      if (touch.flgtouch)
+      setupcfg.touch.press = FALSE;
+      if (setupcfg.touch.flgtouch)
       {
         //Chama evento de retirar Analisar touch
-        touch.flgtouch = FALSE;
+        setupcfg.touch.flgtouch = FALSE;
         
         AnalisaTouch();
         
@@ -1200,9 +1257,9 @@ void Leituras()
    LePower(); /*Le funcionalidades de interrupcao AXP202 */
    Le_Touch();
    Le_Energia(); /*Coleta informação da energia*/
-   if (maquina.estado_atual == EN_MIC)
+   if (setupcfg.maquina.estado_atual == EN_MIC)
    {
-      if(touch.press)
+      if(setupcfg.touch.press)
       {
         Le_MIC();
       } else
@@ -1220,19 +1277,19 @@ void Leituras()
 void MedeTempo()
 {
   /*Somente muda se diferente de repouso*/
-  if(maquina.estado_atual != EN_REPOUSO)
+  if(setupcfg.maquina.estado_atual != EN_REPOUSO)
   {
         tempo_atual = esp_timer_get_time();
         int64_t tempo_decorrido = tempo_atual - tempo_inicio;
 
         if (tempo_decorrido >= INTERVALO_10_SEGUNDOS) 
         {
-            if(maquina.estado_atual!= EN_MIC)
+            if(setupcfg.maquina.estado_atual!= EN_MIC)
             {
               // 10 segundos se passaram
               Serial.println("MedeTempo em Repouso");           
             
-              MudaEstado(&maquina, EN_REPOUSO); //Muda o estado da maquina de estado
+              MudaEstado(&setupcfg.maquina, EN_REPOUSO); //Muda o estado da maquina de estado
             }
         }
 
@@ -1245,35 +1302,35 @@ void AnalisaTouch()
   int64_t descx;
   int64_t descy;
   //Nao implementado
-  descx = touch.xOut - touch.xIn;
-  descy = touch.yOut - touch.yIn;
+  descx = setupcfg.touch.xOut - setupcfg.touch.xIn;
+  descy = setupcfg.touch.yOut - setupcfg.touch.yIn;
 
   if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy<LIMITCLICK&&descy>-LIMITCLICK)
   {
-    touch.move = TC_CLICK;
+    setupcfg.touch.move = TC_CLICK;
   
   } else
   {
     if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy<-LIMITCLICK)
     {
-      touch.move = TC_MOVEUP;
+      setupcfg.touch.move = TC_MOVEUP;
       //Serial.println("MOVE UP");
     } else {
       if(descx<LIMITCLICK&&descx>-LIMITCLICK&&descy>LIMITCLICK)
       {
-        touch.move = TC_MOVEDOWN;
+        setupcfg.touch.move = TC_MOVEDOWN;
   
       } else
       {
         if(descy<LIMITCLICK&&descy>-LIMITCLICK&&descx<-LIMITCLICK)
         {
-          touch.move = TC_MOVERIGHT;
+          setupcfg.touch.move = TC_MOVERIGHT;
   
         } else
         {
           if(descy<LIMITCLICK&&descy>-LIMITCLICK&&descx>LIMITCLICK)
           {
-            touch.move = TC_MOVELEFT;
+            setupcfg.touch.move = TC_MOVELEFT;
   
           }
         }
@@ -1283,97 +1340,136 @@ void AnalisaTouch()
   
 }
 
+//Evento de toque do BLSPEAK
+void Event_BLSpeak()
+{
+  if(setupcfg.flgbutton) /*Controle de pressionar botao*/
+  {
+
+  } else
+  {
+     //Analisa Touch
+    if(setupcfg.touch.move == TC_CLICK)
+    {
+    } else
+    if(setupcfg.touch.move == TC_MOVEUP)
+    {
+      if(setupcfg.volume < 1)
+      {
+        setupcfg.volume = setupcfg.volume + 0.1; 
+        setupcfg.btaudio->volume(setupcfg.volume);
+        Print_Speak();
+      }      
+
+    } else
+    if(setupcfg.touch.move == TC_MOVEDOWN)
+    {      
+      if(setupcfg.volume > 0.1)
+      {
+        setupcfg.volume = setupcfg.volume - 0.1; 
+        setupcfg.btaudio->volume(setupcfg.volume);
+
+        Print_Speak();
+      }
+    }
+  }
+
+}
+
 //Analisa sinais obtidos de leituras
 void Analisa()
 {
-  
-  if(flgbutton) /*Controle de pressionar botao*/
+  if(setupcfg.maquina.estado_atual == EN_BLSPEAK)
+  {
+      Event_BLSpeak();
+  } else
+  if(setupcfg.flgbutton) /*Controle de pressionar botao*/
   {
          /*Desliga ou liga a tela*/  
-         if(maquina.estado_atual == EN_WATCH01)
+         if(setupcfg.maquina.estado_atual == EN_WATCH01)
          {
-                  MudaEstado(&maquina, EN_REPOUSO);
-                  flgbutton = false;
+                  MudaEstado(&setupcfg.maquina, EN_REPOUSO);
+                  setupcfg.flgbutton = false;
          } else 
-        if(maquina.estado_atual == EN_SETCLOCK)
+        if(setupcfg.maquina.estado_atual == EN_SETCLOCK)
          {
-                  MudaEstado(&maquina, EN_REPOUSO);
-                  flgbutton = false;
+                  MudaEstado(&setupcfg.maquina, EN_REPOUSO);
+                  setupcfg.flgbutton = false;
          } else          
-        if(maquina.estado_atual == EN_WIFI)
+        if(setupcfg.maquina.estado_atual == EN_WIFI)
          {
-                  MudaEstado(&maquina, EN_REPOUSO);
-                  flgbutton = false;
+                  MudaEstado(&setupcfg.maquina, EN_REPOUSO);
+                  setupcfg.flgbutton = false;
          } else                   
-         if(maquina.estado_atual == EN_SETCLOCK)
+         if(setupcfg.maquina.estado_atual == EN_SETCLOCK)
          {
-                  MudaEstado(&maquina, EN_REPOUSO);
-                  flgbutton = false;
+                  MudaEstado(&setupcfg.maquina, EN_REPOUSO);
+                  setupcfg.flgbutton = false;
          } else 
-         if(maquina.estado_atual == EN_REPOUSO)
+         if(setupcfg.maquina.estado_atual == EN_REPOUSO)
          {
-                  MudaEstado(&maquina, EN_WATCH01);
-                  flgbutton = false;
+                  MudaEstado(&setupcfg.maquina, EN_WATCH01);
+                  setupcfg.flgbutton = false;
          }
    } 
    //Analisa Touch
-   if(touch.move != TC_NONE)
+   if(setupcfg.touch.move != TC_NONE)
    {
-     if(touch.move == TC_CLICK)
+     if(setupcfg.touch.move == TC_CLICK)
      {
        Serial.println("Click");
      } else
-     if(touch.move == TC_MOVEUP)
+     if(setupcfg.touch.move == TC_MOVEUP)
      {
        Serial.println("MOVE UP");
-       if(maquina.estado_atual == EN_WATCH01)
+       if(setupcfg.maquina.estado_atual == EN_WATCH01)
        {
-         MudaEstado(&maquina,EN_SETCLOCK);
+         MudaEstado(&setupcfg.maquina,EN_SETCLOCK);
        } else
-       if(maquina.estado_atual == EN_SETCLOCK)
+       if(setupcfg.maquina.estado_atual == EN_SETCLOCK)
        {
-         MudaEstado(&maquina,EN_WIFI);
+         MudaEstado(&setupcfg.maquina,EN_WIFI);
        }
 
      } else 
-     if(touch.move == TC_MOVEDOWN)
+     if(setupcfg.touch.move == TC_MOVEDOWN)
      {
        Serial.println("MOVE DOWN");
-       if(maquina.estado_atual == EN_SETCLOCK)
+       if(setupcfg.maquina.estado_atual == EN_SETCLOCK)
        {
-         MudaEstado(&maquina,EN_WATCH01);
+         MudaEstado(&setupcfg.maquina,EN_WATCH01);
        } else
-       if(maquina.estado_atual == EN_WIFI)
+       if(setupcfg.maquina.estado_atual == EN_WIFI)
        {
-         MudaEstado(&maquina,EN_SETCLOCK);
+         MudaEstado(&setupcfg.maquina,EN_SETCLOCK);
        } 
        
      } else 
-     if(touch.move == TC_MOVELEFT)
+     if(setupcfg.touch.move == TC_MOVELEFT)
      {
       
-       if(maquina.estado_atual==EN_WATCH01) 
+       if(setupcfg.maquina.estado_atual==EN_WATCH01) 
        {
-         MudaEstado(&maquina,EN_MIC);
+         MudaEstado(&setupcfg.maquina,EN_MIC);
        } else 
-       if(maquina.estado_atual==EN_BLSPEAK)
+       if(setupcfg.maquina.estado_atual==EN_BLSPEAK)
        {
-         MudaEstado(&maquina,EN_WATCH01);
+         MudaEstado(&setupcfg.maquina,EN_WATCH01);
        }
      } else 
-     if(touch.move == TC_MOVERIGHT)
+     if(setupcfg.touch.move == TC_MOVERIGHT)
      {
-       if(maquina.estado_atual==EN_WATCH01)
+       if(setupcfg.maquina.estado_atual==EN_WATCH01)
        {
-         MudaEstado(&maquina,EN_BLSPEAK);
+         MudaEstado(&setupcfg.maquina,EN_BLSPEAK);
        } else      
-       if (maquina.estado_atual==EN_MIC)
+       if (setupcfg.maquina.estado_atual==EN_MIC)
        {
-         MudaEstado(&maquina,EN_WATCH01);
+         MudaEstado(&setupcfg.maquina,EN_WATCH01);
        }
      }  
 
-     touch.move = TC_NONE;
+     setupcfg.touch.move = TC_NONE;
    }
 }
 
@@ -1391,23 +1487,30 @@ void MostraHora()
   }
 }
 
+//Mostra a tela do Speak
+void Call_Speak()
+{
+
+}
+
 //Maquina de estado
 void EstadoAtual()
 {
-  if(maquina.estado_atual != EN_REPOUSO)
+  if(setupcfg.maquina.estado_atual != EN_REPOUSO)
   {
-      if(maquina.estado_atual != EN_MIC)
+      //Somente mostra hora nos estados permitidos
+      if(setupcfg.maquina.estado_atual != EN_MIC && setupcfg.maquina.estado_atual != EN_BLSPEAK)
       {
-        MostraHora();
-      }
-      
-      if(maquina.estado_atual == EN_WATCH01)
+        MostraHora();        
+      } 
+
+      if(setupcfg.maquina.estado_atual == EN_WATCH01)
       {      
           //Serial.print('.');
           Display_Relogio();
           MedeTempo(); //Avalia se entra em modo de espera
       } else
-      if(maquina.estado_atual == EN_SETCLOCK)
+      if(setupcfg.maquina.estado_atual == EN_SETCLOCK)
       {
           // disconnected
           if (!deviceConnected && oldDeviceConnected) 
@@ -1426,14 +1529,18 @@ void EstadoAtual()
             drawSTATUS(true);
           }
       } else
-      if(maquina.estado_atual == EN_WIFI)
+      if(setupcfg.maquina.estado_atual == EN_WIFI)
       {
         MedeTempo(); //Avalia se entra em modo de espera
 
       } else
-      if(maquina.estado_atual ==EN_MIC)
+      if(setupcfg.maquina.estado_atual ==EN_MIC)
       {
         MedeTempo(); //Avalia se entra em modo de espera
+      }
+      if(setupcfg.maquina.estado_atual == EN_BLSPEAK)
+      {
+        Call_Speak();
       }
 
   } else
